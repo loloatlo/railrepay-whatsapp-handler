@@ -1,0 +1,335 @@
+openapi: 3.0.3
+info:
+  title: WhatsApp Handler Service
+  version: 1.0.0
+  description: |
+    WhatsApp conversation handler and user authentication service for RailRepay MVP.
+
+    Handles Twilio WhatsApp webhooks, manages user sessions via FSM, and orchestrates
+    the user journey for delay repayment claims.
+
+    **Architecture Decision Records (ADRs):**
+    - ADR-008: Health check endpoint with <100ms response time
+    - ADR-002: Correlation IDs for distributed tracing
+    - ADR-012: OpenAPI specification for all endpoints
+    - ADR-014: TDD implementation (tests written first)
+
+  contact:
+    name: RailRepay Team
+    email: support@railrepay.com
+
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://whatsapp-handler.railway.app
+    description: Production (Railway)
+  - url: http://localhost:3000
+    description: Local development
+
+tags:
+  - name: webhook
+    description: Twilio WhatsApp webhook endpoints
+  - name: observability
+    description: Health checks and metrics
+
+paths:
+  /webhook/twilio:
+    post:
+      summary: Twilio WhatsApp webhook
+      description: |
+        Main webhook endpoint for receiving WhatsApp messages from Twilio.
+
+        **Flow:**
+        1. Validate Twilio signature (security)
+        2. Rate limit check (60 req/min per phone)
+        3. Check idempotency (prevent duplicate processing)
+        4. Get user FSM state
+        5. Execute state-specific handler
+        6. Return TwiML response
+
+        **Security:**
+        - Twilio signature validation required
+        - Rate limiting per phone number
+        - Idempotency keys (24hr TTL)
+
+      tags:
+        - webhook
+
+      parameters:
+        - name: X-Twilio-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Twilio HMAC signature for request validation
+
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - MessageSid
+                - From
+                - Body
+              properties:
+                MessageSid:
+                  type: string
+                  description: Unique Twilio message identifier
+                  example: SM1234567890abcdef
+                From:
+                  type: string
+                  description: WhatsApp phone number (E.164 format with whatsapp prefix)
+                  example: whatsapp:+447700900123
+                To:
+                  type: string
+                  description: Service WhatsApp number
+                  example: whatsapp:+447700900000
+                Body:
+                  type: string
+                  description: Message text content
+                  example: YES
+                NumMedia:
+                  type: string
+                  description: Number of media attachments
+                  example: "0"
+                MediaUrl0:
+                  type: string
+                  format: uri
+                  description: URL of first media attachment (if NumMedia > 0)
+                  example: https://api.twilio.com/media/ME1234567890
+                MediaContentType0:
+                  type: string
+                  description: Content type of first media
+                  example: image/jpeg
+
+      responses:
+        '200':
+          description: TwiML response sent successfully
+          content:
+            text/xml:
+              schema:
+                type: string
+                example: |
+                  <?xml version="1.0" encoding="UTF-8"?>
+                  <Response>
+                    <Message>Welcome to RailRepay! Reply YES to accept terms and conditions.</Message>
+                  </Response>
+
+        '400':
+          description: Invalid request (missing required fields)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+        '403':
+          description: Invalid Twilio signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+        '429':
+          description: Rate limit exceeded (60 req/min per phone)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /health:
+    get:
+      summary: Health check endpoint
+      description: |
+        Returns health status of the service and its dependencies.
+
+        **ADR-008 Compliance:**
+        - Response time <100ms
+        - Checks: PostgreSQL, Redis, timetable-loader
+        - Returns 200 if healthy/degraded, 503 if unhealthy
+
+        **Status Definitions:**
+        - `healthy`: All dependencies operational
+        - `degraded`: Core dependencies OK, optional services down (e.g., timetable-loader)
+        - `unhealthy`: Critical dependencies down (database or Redis)
+
+      tags:
+        - observability
+
+      responses:
+        '200':
+          description: Service is healthy or degraded
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-cache, no-store, must-revalidate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+
+        '503':
+          description: Service is unhealthy (critical dependencies down)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+
+  /metrics:
+    get:
+      summary: Prometheus metrics endpoint
+      description: |
+        Returns Prometheus-formatted metrics for Grafana Alloy scraping.
+
+        **Custom Metrics:**
+        - `whatsapp_messages_received_total` (counter)
+        - `whatsapp_messages_sent_total` (counter)
+        - `whatsapp_user_registrations_total` (counter)
+        - `whatsapp_otp_verifications_total` (counter)
+        - `whatsapp_journeys_created_total` (counter)
+        - `whatsapp_webhook_duration_seconds` (histogram)
+        - `whatsapp_fsm_transition_duration_seconds` (histogram)
+        - `whatsapp_active_sessions_total` (gauge)
+
+        Plus default Node.js metrics (CPU, memory, event loop, etc.)
+
+      tags:
+        - observability
+
+      responses:
+        '200':
+          description: Metrics in Prometheus text format
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  # HELP whatsapp_messages_received_total Total number of WhatsApp messages received
+                  # TYPE whatsapp_messages_received_total counter
+                  whatsapp_messages_received_total{status="success"} 150
+
+                  # HELP nodejs_heap_size_total_bytes Total heap size in bytes
+                  # TYPE nodejs_heap_size_total_bytes gauge
+                  nodejs_heap_size_total_bytes 50331648
+
+        '500':
+          description: Error collecting metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Error collecting metrics
+
+  /:
+    get:
+      summary: Root endpoint
+      description: Returns basic service information
+
+      responses:
+        '200':
+          description: Service information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                    example: whatsapp-handler
+                  version:
+                    type: string
+                    example: 1.0.0
+                  status:
+                    type: string
+                    example: running
+
+components:
+  schemas:
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: Invalid Twilio signature
+        correlationId:
+          type: string
+          format: uuid
+          description: Correlation ID for tracing (ADR-002)
+          example: 550e8400-e29b-41d4-a716-446655440000
+
+    HealthCheckResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - version
+        - checks
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: Overall service health status
+          example: healthy
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp
+          example: 2025-11-30T15:00:00.000Z
+        version:
+          type: string
+          description: Service version from package.json
+          example: 1.0.0
+        checks:
+          type: object
+          required:
+            - database
+            - redis
+            - timetable_loader
+          properties:
+            database:
+              $ref: '#/components/schemas/CheckResult'
+            redis:
+              $ref: '#/components/schemas/CheckResult'
+            timetable_loader:
+              $ref: '#/components/schemas/CheckResult'
+
+    CheckResult:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+          example: healthy
+        latency_ms:
+          type: number
+          description: Response latency in milliseconds (if healthy)
+          example: 5
+        error:
+          type: string
+          description: Error message (if unhealthy)
+          example: Connection refused
+
+  securitySchemes:
+    TwilioSignature:
+      type: apiKey
+      in: header
+      name: X-Twilio-Signature
+      description: HMAC-SHA1 signature of the request (validated against Twilio auth token)
+
+security:
+  - TwilioSignature: []

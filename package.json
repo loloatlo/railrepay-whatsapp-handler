@@ -1,0 +1,68 @@
+{
+  "name": "@railrepay/whatsapp-handler",
+  "version": "1.0.0",
+  "description": "WhatsApp conversation handler and user authentication service",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run tests/integration",
+    "test:smoke": "vitest run tests/smoke",
+    "migrate:up": "node-pg-migrate up",
+    "migrate:down": "node-pg-migrate down",
+    "migrate:create": "node-pg-migrate create",
+    "lint": "eslint src tests --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "security:audit": "npm audit --audit-level=high",
+    "security:audit:production": "npm audit --production --audit-level=high"
+  },
+  "keywords": [
+    "whatsapp",
+    "twilio",
+    "authentication",
+    "railrepay"
+  ],
+  "author": "RailRepay",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@railrepay/metrics-pusher": "^1.0.0",
+    "@railrepay/postgres-client": "^1.0.0",
+    "@railrepay/redis-cache": "^1.0.0",
+    "@railrepay/winston-logger": "^1.0.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "ioredis": "^5.3.2",
+    "pg": "^8.11.3",
+    "prom-client": "^15.1.0",
+    "redis": "^4.6.12",
+    "twilio": "^4.23.0",
+    "winston": "^3.11.0",
+    "winston-loki": "^6.0.8",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "^10.4.0",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.6",
+    "@types/pg": "^8.10.9",
+    "@types/supertest": "^6.0.3",
+    "@typescript-eslint/eslint-plugin": "^6.17.0",
+    "@typescript-eslint/parser": "^6.17.0",
+    "@vitest/coverage-v8": "^1.6.1",
+    "eslint": "^8.56.0",
+    "node-pg-migrate": "^6.2.2",
+    "prettier": "^3.1.1",
+    "supertest": "^7.1.4",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

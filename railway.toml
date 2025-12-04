@@ -1,0 +1,24 @@
+# Railway Deployment Configuration
+# Service: whatsapp-handler
+# ADR Compliance: ADR-005 (Railway native rollback), ADR-008 (health checks)
+
+[build]
+# Use Nixpacks for automatic dependency detection
+builder = "nixpacks"
+# Nixpacks handles npm install and build automatically
+# buildCommand intentionally not set - Nixpacks detects package.json scripts
+
+[deploy]
+# Start the compiled Express server
+startCommand = "npm start"
+# Health check endpoint per ADR-008
+healthcheckPath = "/health"
+# Allow 100s for startup (database connection, config loading)
+healthcheckTimeout = 100
+# Restart policy for transient failures
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
+
+[service]
+# Internal port for Railway service mesh
+internalPort = 3000

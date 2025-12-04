@@ -1,0 +1,32 @@
+# Node modules (will be installed in container)
+node_modules/
+
+# Build output (will be generated in container)
+dist/
+
+# Test files
+tests/
+coverage/
+*.test.ts
+*.spec.ts
+
+# Development files
+.git/
+.github/
+.vscode/
+.env
+.env.local
+.env.*.local
+
+# Documentation
+*.md
+docs/
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
