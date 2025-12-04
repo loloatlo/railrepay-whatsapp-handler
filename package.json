@@ -1,6 +1,6 @@
 {
   "name": "@railrepay/whatsapp-handler",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "WhatsApp conversation handler and user authentication service",
   "main": "dist/index.js",
   "type": "module",
