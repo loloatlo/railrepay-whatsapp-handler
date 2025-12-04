@@ -62,6 +62,12 @@ export interface DatabaseClient {
  */
 export function createDatabaseClient(config: DatabaseConfig): DatabaseClient {
   // Create PostgresClient from shared library
+  // SSL config: The @railrepay/postgres-client library internally uses
+  // { rejectUnauthorized: false } when ssl=true, which handles Railway's
+  // self-signed certificates correctly
+  const sslEnabled =
+    process.env.NODE_ENV === 'production' || process.env.PGSSLMODE === 'require';
+
   const postgresClient = new PostgresClient({
     serviceName: 'whatsapp-handler',
     schemaName: config.schema,
@@ -70,7 +76,7 @@ export function createDatabaseClient(config: DatabaseConfig): DatabaseClient {
     database: config.database,
     user: config.user,
     password: config.password,
-    ssl: process.env.NODE_ENV === 'production',
+    ssl: sslEnabled,
     poolSize: config.max ?? 20,
     idleTimeout: config.idleTimeoutMillis ?? 10000,
     connectionTimeout: config.connectionTimeoutMillis ?? 5000,
