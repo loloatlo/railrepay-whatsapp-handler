@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for whatsapp-handler service
 # Railway deployment alternative to Nixpacks
-# Build cache bust: 2024-12-04-v3-ssl-fix
+# Build cache bust: 2024-12-04-v4-migrations-fix
 
 # Build stage
 FROM node:20-alpine AS builder
@@ -50,4 +50,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # Note: Railway provides individual PG* vars, not DATABASE_URL
 # We construct DATABASE_URL for node-pg-migrate and disable TLS cert verification
 # for self-signed certificates used by Railway PostgreSQL
+# The migrate:up script now explicitly uses --migrations-dir flag to avoid
+# config file resolution issues in containerized environments
 CMD ["sh", "-c", "export DATABASE_URL=\"postgresql://${PGUSER}:${PGPASSWORD}@${PGHOST}:${PGPORT:-5432}/${PGDATABASE}?sslmode=require\" && NODE_TLS_REJECT_UNAUTHORIZED=0 npm run migrate:up && npm start"]
