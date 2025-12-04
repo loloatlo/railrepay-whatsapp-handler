@@ -2,10 +2,11 @@
   "database-url": {
     "env": "DATABASE_URL"
   },
-  "migrations-dir": "dist/migrations",
+  "migrations-dir": "migrations",
   "migrations-table": "pgmigrations",
   "schema": "whatsapp_handler",
   "check-order": true,
   "run-in-transaction": true,
-  "migration-file-language": "js"
+  "migration-file-language": "ts",
+  "tsconfig": "tsconfig.migrations.json"
 }

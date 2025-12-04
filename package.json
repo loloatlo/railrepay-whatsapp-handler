@@ -5,7 +5,9 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc -p tsconfig.migrations.json",
+    "build:src": "tsc",
+    "build:migrations": "tsc -p tsconfig.migrations.json",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "test": "vitest run",
@@ -14,8 +16,10 @@
     "test:integration": "vitest run tests/integration",
     "test:smoke": "vitest run tests/smoke",
     "migrate:up": "node-pg-migrate up",
+    "migrate:up:dev": "node-pg-migrate up -f .migrationrc.dev.json",
     "migrate:down": "node-pg-migrate down",
-    "migrate:create": "node-pg-migrate create",
+    "migrate:down:dev": "node-pg-migrate down -f .migrationrc.dev.json",
+    "migrate:create": "node-pg-migrate create -f .migrationrc.dev.json",
     "lint": "eslint src tests --ext .ts",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "security:audit": "npm audit --audit-level=high",
@@ -43,7 +47,8 @@
     "twilio": "^4.23.0",
     "winston": "^3.11.0",
     "winston-loki": "^6.0.8",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "node-pg-migrate": "^6.2.2"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^10.4.0",
@@ -55,7 +60,6 @@
     "@typescript-eslint/parser": "^6.17.0",
     "@vitest/coverage-v8": "^1.6.1",
     "eslint": "^8.56.0",
-    "node-pg-migrate": "^6.2.2",
     "prettier": "^3.1.1",
     "supertest": "^7.1.4",
     "tsx": "^4.7.0",

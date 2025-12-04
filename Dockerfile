@@ -29,11 +29,8 @@ COPY package*.json ./
 # Install ONLY production dependencies
 RUN npm ci --only=production
 
-# Copy compiled JavaScript from builder
+# Copy compiled JavaScript from builder (includes dist/migrations)
 COPY --from=builder /app/dist ./dist
-
-# Copy migrations for Railway deployment
-COPY --from=builder /app/migrations ./migrations
 
 # Copy migration config
 COPY --from=builder /app/.migrationrc.json ./.migrationrc.json
