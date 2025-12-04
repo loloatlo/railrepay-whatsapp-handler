@@ -3,17 +3,18 @@
 # ADR Compliance: ADR-005 (Railway native rollback), ADR-008 (health checks)
 
 [build]
-# Use Nixpacks for automatic dependency detection
-builder = "nixpacks"
-# Nixpacks handles npm install and build automatically
-# buildCommand intentionally not set - Nixpacks detects package.json scripts
+# Use Dockerfile for explicit build control and multi-stage optimization
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+# Dockerfile handles npm install, TypeScript build, and migration preparation
 
 [deploy]
-# Start the compiled Express server
-startCommand = "npm start"
+# Dockerfile CMD handles migrations + server start
+# CMD: sh -c "npm run migrate:up && npm start"
+# No startCommand needed - Dockerfile CMD is used
 # Health check endpoint per ADR-008
 healthcheckPath = "/health"
-# Allow 100s for startup (database connection, config loading)
+# Allow 100s for startup (database connection, migrations, config loading)
 healthcheckTimeout = 100
 # Restart policy for transient failures
 restartPolicyType = "on_failure"
