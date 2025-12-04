@@ -1,5 +1,6 @@
 # Multi-stage Dockerfile for whatsapp-handler service
 # Railway deployment alternative to Nixpacks
+# Build cache bust: 2024-12-04-v2
 
 # Build stage
 FROM node:20-alpine AS builder
