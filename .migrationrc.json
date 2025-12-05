@@ -4,6 +4,7 @@
   },
   "migrations-dir": "dist/migrations",
   "migrations-table": "pgmigrations",
+  "migrations-schema": "whatsapp_handler",
   "schema": "whatsapp_handler",
   "check-order": true,
   "run-in-transaction": true,

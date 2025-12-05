@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for whatsapp-handler service
 # Railway deployment alternative to Nixpacks
-# Build cache bust: 2024-12-05-v6-remove-file-language-flag
+# Build cache bust: 2024-12-05-v7-migrations-schema-fix
 #
 # MIGRATION FIX: ESM/CommonJS Compatibility
 # - package.json has "type": "module" (ESM)
