@@ -5,7 +5,7 @@
  * Per ADR-014: Implementation written AFTER tests
  */
 
-import type { HandlerContext, HandlerResult } from './index';
+import type { HandlerContext, HandlerResult } from './index.js';
 import { FSMState } from '../services/fsm.service.js';
 
 export async function journeyStationsHandler(ctx: HandlerContext): Promise<HandlerResult> {

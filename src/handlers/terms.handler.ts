@@ -11,7 +11,7 @@
  * - Invalid input → Error message with hint, stay in AWAITING_TERMS
  */
 
-import type { HandlerContext, HandlerResult } from './index';
+import type { HandlerContext, HandlerResult } from './index.js';
 import { FSMState } from '../services/fsm.service.js';
 
 const TERMS_URL = 'https://railrepay.co.uk/terms';

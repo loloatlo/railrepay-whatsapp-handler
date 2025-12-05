@@ -10,7 +10,7 @@
  * - Returning unverified user → Resume verification flow, transition to AWAITING_TERMS
  */
 
-import type { HandlerContext, HandlerResult } from './index';
+import type { HandlerContext, HandlerResult } from './index.js';
 import { FSMState } from '../services/fsm.service.js';
 
 /**

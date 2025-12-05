@@ -16,7 +16,7 @@
  */
 
 import type { FSMState } from '../services/fsm.service.js';
-import type { User, OutboxEvent } from '../db/types';
+import type { User, OutboxEvent } from '../db/types.js';
 
 /**
  * Context passed to every handler

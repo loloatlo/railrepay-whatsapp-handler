@@ -11,9 +11,9 @@
  * - Invalid date → Send ERROR_INVALID_INPUT with hint
  */
 
-import type { HandlerContext, HandlerResult } from './index';
+import type { HandlerContext, HandlerResult } from './index.js';
 import { FSMState } from '../services/fsm.service.js';
-import { parseDate } from '../utils/date-parser';
+import { parseDate } from '../utils/date-parser.js';
 
 /**
  * Handle AWAITING_JOURNEY_DATE state

@@ -5,9 +5,9 @@
  * Per ADR-014: Implementation written AFTER tests
  */
 
-import type { HandlerContext, HandlerResult } from './index';
+import type { HandlerContext, HandlerResult } from './index.js';
 import { FSMState } from '../services/fsm.service.js';
-import { parseTime } from '../utils/time-parser';
+import { parseTime } from '../utils/time-parser.js';
 
 export async function journeyTimeHandler(ctx: HandlerContext): Promise<HandlerResult> {
   const result = parseTime(ctx.messageBody);

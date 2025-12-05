@@ -13,7 +13,7 @@
  */
 
 import type { Pool } from 'pg';
-import type { UserPreference } from '../types.v2';
+import type { UserPreference } from '../types.v2.js';
 
 export class PreferencesRepository {
   constructor(private pool: Pool) {}

@@ -17,7 +17,7 @@
  */
 
 import type { Pool } from 'pg';
-import type { OutboxEvent } from '../types.v2';
+import type { OutboxEvent } from '../types.v2.js';
 
 export class OutboxRepository {
   constructor(private pool: Pool) {}

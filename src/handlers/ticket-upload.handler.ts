@@ -6,9 +6,9 @@
  */
 
 import { randomUUID } from 'crypto';
-import type { HandlerContext, HandlerResult } from './index';
+import type { HandlerContext, HandlerResult } from './index.js';
 import { FSMState } from '../services/fsm.service.js';
-import type { OutboxEvent } from '../db/types';
+import type { OutboxEvent } from '../db/types.js';
 
 export async function ticketUploadHandler(ctx: HandlerContext): Promise<HandlerResult> {
   const input = ctx.messageBody.trim().toUpperCase();
