@@ -8,7 +8,9 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
-import { validateRequest } from 'twilio';
+// Twilio is a CommonJS module - must use default import in ESM
+import twilio from 'twilio';
+const { validateRequest } = twilio;
 import { getLogger } from '../lib/logger.js';
 
 const logger = getLogger();

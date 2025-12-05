@@ -10,10 +10,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Request, Response, NextFunction } from 'express';
 
-// Mock twilio module
+// Mock twilio module (CommonJS module with default export)
 const mockValidateRequest = vi.fn();
 vi.mock('twilio', () => ({
-  validateRequest: mockValidateRequest,
+  default: {
+    validateRequest: mockValidateRequest,
+  },
 }));
 
 describe('Twilio Signature Validation Middleware', () => {
