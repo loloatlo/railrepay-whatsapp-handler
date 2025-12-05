@@ -37,6 +37,11 @@ let server: ReturnType<typeof app.listen>;
 // Create Express app
 const app = express();
 
+// Enable trust proxy for Railway/proxy environments
+// This allows req.protocol and req.hostname to use X-Forwarded-* headers
+// CRITICAL: Required for Twilio signature validation behind reverse proxy
+app.set('trust proxy', true);
+
 try {
   // Load configuration
   console.log('[whatsapp-handler] Loading configuration...');

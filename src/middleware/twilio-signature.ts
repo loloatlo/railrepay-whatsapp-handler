@@ -58,8 +58,10 @@ export function validateTwilioSignature(authToken: string) {
 
       // Reconstruct full URL for validation
       // Per Twilio docs: Must match exact URL Twilio called
-      const protocol = req.protocol; // 'http' or 'https'
-      const host = req.get('host'); // e.g., 'whatsapp-handler.railway.app'
+      // IMPORTANT: Behind reverse proxy (Railway), we must use X-Forwarded-* headers
+      // to get the original protocol/host that Twilio used to sign the request
+      const protocol = req.get('X-Forwarded-Proto') || req.protocol; // 'https' from proxy
+      const host = req.get('X-Forwarded-Host') || req.get('host'); // External hostname
       const url = `${protocol}://${host}${req.originalUrl}`;
 
       // Get request params (body for POST requests)

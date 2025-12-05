@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for whatsapp-handler service
 # Railway deployment alternative to Nixpacks
-# Build cache bust: 2024-12-05-v10-all-esm-extensions
+# Build cache bust: 2024-12-05-v11-fix-proxy-signature-validation
 #
 # MIGRATION FIX: ESM/CommonJS Compatibility
 # - package.json has "type": "module" (ESM)

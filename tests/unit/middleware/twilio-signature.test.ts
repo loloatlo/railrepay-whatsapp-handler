@@ -192,6 +192,99 @@ describe('Twilio Signature Validation Middleware', () => {
     });
   });
 
+  describe('proxy/load balancer environment', () => {
+    it('should use X-Forwarded-Proto header when present (Railway/proxy)', async () => {
+      // Arrange - simulates Railway proxy environment
+      const { validateTwilioSignature } = await import('../../../src/middleware/twilio-signature.js');
+
+      // Railway proxy terminates SSL, so req.protocol is 'http'
+      // but X-Forwarded-Proto tells us the original was 'https'
+      mockReq.protocol = 'http';
+      (mockReq.get as any).mockImplementation((name: string) => {
+        if (name === 'host') return 'whatsapp-handler.railway.app';
+        if (name === 'X-Forwarded-Proto') return 'https';
+        if (name === 'X-Forwarded-Host') return undefined;
+        return undefined;
+      });
+
+      const validSignature = 'valid-signature';
+      (mockReq.header as any).mockReturnValue(validSignature);
+      mockValidateRequest.mockReturnValue(true);
+
+      const authToken = 'test-auth-token';
+      const middleware = validateTwilioSignature(authToken);
+
+      // Act
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      // Assert - URL should use https from X-Forwarded-Proto, not http from req.protocol
+      const callArgs = mockValidateRequest.mock.calls[0];
+      const url = callArgs[2];
+      expect(url).toBe('https://whatsapp-handler.railway.app/webhook/twilio');
+      expect(url).not.toContain('http://');
+      expect(mockNext).toHaveBeenCalled();
+    });
+
+    it('should use X-Forwarded-Host header when present', async () => {
+      // Arrange
+      const { validateTwilioSignature } = await import('../../../src/middleware/twilio-signature.js');
+
+      // Internal host might be different from external
+      (mockReq.get as any).mockImplementation((name: string) => {
+        if (name === 'host') return 'internal-container:3000';
+        if (name === 'X-Forwarded-Proto') return 'https';
+        if (name === 'X-Forwarded-Host') return 'whatsapp-handler.railway.app';
+        return undefined;
+      });
+      mockReq.protocol = 'http';
+
+      const validSignature = 'valid-signature';
+      (mockReq.header as any).mockReturnValue(validSignature);
+      mockValidateRequest.mockReturnValue(true);
+
+      const authToken = 'test-auth-token';
+      const middleware = validateTwilioSignature(authToken);
+
+      // Act
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      // Assert - URL should use forwarded host, not internal host
+      const callArgs = mockValidateRequest.mock.calls[0];
+      const url = callArgs[2];
+      expect(url).toBe('https://whatsapp-handler.railway.app/webhook/twilio');
+      expect(url).not.toContain('internal-container');
+      expect(mockNext).toHaveBeenCalled();
+    });
+
+    it('should fall back to req.protocol when X-Forwarded-Proto is absent', async () => {
+      // Arrange - no proxy headers (direct connection)
+      const { validateTwilioSignature } = await import('../../../src/middleware/twilio-signature.js');
+
+      mockReq.protocol = 'https';
+      (mockReq.get as any).mockImplementation((name: string) => {
+        if (name === 'host') return 'whatsapp-handler.railway.app';
+        // No X-Forwarded headers
+        return undefined;
+      });
+
+      const validSignature = 'valid-signature';
+      (mockReq.header as any).mockReturnValue(validSignature);
+      mockValidateRequest.mockReturnValue(true);
+
+      const authToken = 'test-auth-token';
+      const middleware = validateTwilioSignature(authToken);
+
+      // Act
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      // Assert
+      const callArgs = mockValidateRequest.mock.calls[0];
+      const url = callArgs[2];
+      expect(url).toBe('https://whatsapp-handler.railway.app/webhook/twilio');
+      expect(mockNext).toHaveBeenCalled();
+    });
+  });
+
   describe('security edge cases', () => {
     it('should reject empty signature string', async () => {
       // Arrange
