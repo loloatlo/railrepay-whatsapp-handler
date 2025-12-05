@@ -7,7 +7,7 @@
 
 import { randomUUID } from 'crypto';
 import type { HandlerContext, HandlerResult } from './index';
-import { FSMState } from '../services/fsm.service';
+import { FSMState } from '../services/fsm.service.js';
 import type { OutboxEvent } from '../db/types';
 
 export async function ticketUploadHandler(ctx: HandlerContext): Promise<HandlerResult> {

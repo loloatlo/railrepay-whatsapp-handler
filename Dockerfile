@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for whatsapp-handler service
 # Railway deployment alternative to Nixpacks
-# Build cache bust: 2024-12-05-v8-twilio-esm-import-fix
+# Build cache bust: 2024-12-05-v9-esm-import-extensions
 #
 # MIGRATION FIX: ESM/CommonJS Compatibility
 # - package.json has "type": "module" (ESM)

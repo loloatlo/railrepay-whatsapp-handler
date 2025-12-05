@@ -6,7 +6,7 @@
  */
 
 import type { HandlerContext, HandlerResult } from './index';
-import { FSMState } from '../services/fsm.service';
+import { FSMState } from '../services/fsm.service.js';
 
 export async function journeyConfirmHandler(ctx: HandlerContext): Promise<HandlerResult> {
   const input = ctx.messageBody.trim().toUpperCase();

@@ -12,7 +12,7 @@
  */
 
 import type { HandlerContext, HandlerResult } from './index';
-import { FSMState } from '../services/fsm.service';
+import { FSMState } from '../services/fsm.service.js';
 import { parseDate } from '../utils/date-parser';
 
 /**

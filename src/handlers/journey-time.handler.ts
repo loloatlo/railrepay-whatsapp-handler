@@ -6,7 +6,7 @@
  */
 
 import type { HandlerContext, HandlerResult } from './index';
-import { FSMState } from '../services/fsm.service';
+import { FSMState } from '../services/fsm.service.js';
 import { parseTime } from '../utils/time-parser';
 
 export async function journeyTimeHandler(ctx: HandlerContext): Promise<HandlerResult> {

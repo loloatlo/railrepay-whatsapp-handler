@@ -15,7 +15,7 @@
  * - HandlerResult includes next state, data, and events to publish
  */
 
-import type { FSMState } from '../services/fsm.service';
+import type { FSMState } from '../services/fsm.service.js';
 import type { User, OutboxEvent } from '../db/types';
 
 /**
