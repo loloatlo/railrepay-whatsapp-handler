@@ -5,9 +5,9 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc && tsc -p tsconfig.migrations.json",
+    "build": "tsc && tsc -p tsconfig.migrations.json && node scripts/rename-migrations.js",
     "build:src": "tsc",
-    "build:migrations": "tsc -p tsconfig.migrations.json",
+    "build:migrations": "tsc -p tsconfig.migrations.json && node scripts/rename-migrations.js",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "test": "vitest run",

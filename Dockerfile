@@ -1,6 +1,12 @@
 # Multi-stage Dockerfile for whatsapp-handler service
 # Railway deployment alternative to Nixpacks
-# Build cache bust: 2024-12-04-v4-migrations-fix
+# Build cache bust: 2024-12-05-v6-remove-file-language-flag
+#
+# MIGRATION FIX: ESM/CommonJS Compatibility
+# - package.json has "type": "module" (ESM)
+# - Migrations are compiled to CommonJS (node-pg-migrate requirement)
+# - Build script renames compiled .js migrations to .cjs for compatibility
+# - node-pg-migrate can require() .cjs files successfully
 
 # Build stage
 FROM node:20-alpine AS builder
