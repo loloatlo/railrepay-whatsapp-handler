@@ -46,8 +46,11 @@ export interface HandlerResult {
 /**
  * Handler function signature
  * All handlers must implement this interface
+ *
+ * @param ctx - Handler context with message and user data
+ * @param userRepository - Optional UserRepository for database operations (injected by webhook controller)
  */
-export type Handler = (ctx: HandlerContext) => Promise<HandlerResult>;
+export type Handler = (ctx: HandlerContext, userRepository?: any) => Promise<HandlerResult>;
 
 /**
  * Internal handler registry

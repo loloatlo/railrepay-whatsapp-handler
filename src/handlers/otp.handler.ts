@@ -9,18 +9,26 @@
  * - Invalid code → Increment attempt count, send error
  * - "RESEND" → Start new Twilio Verify, send OTP_REQUEST
  * - 3 failed attempts → Send lockout message, delete state
+ *
+ * Bug Fix: Update user.verified_at in database after successful OTP validation
  */
 
 import { randomUUID } from 'crypto';
 import type { HandlerContext, HandlerResult } from './index.js';
 import { FSMState } from '../services/fsm.service.js';
 import type { OutboxEvent } from '../db/types.js';
+import type { UserRepository } from '../db/repositories/user.repository.js';
 
 /**
  * Handle AWAITING_OTP state
  * Processes OTP verification attempts
+ *
+ * Bug Fix: Update user.verified_at in database after successful OTP validation
  */
-export async function otpHandler(ctx: HandlerContext): Promise<HandlerResult> {
+export async function otpHandler(
+  ctx: HandlerContext,
+  userRepository?: UserRepository
+): Promise<HandlerResult> {
   // Require user to be present
   if (!ctx.user) {
     throw new Error('User required for OTP verification');
@@ -62,6 +70,14 @@ Or reply RESEND to get a new code.`,
   // TODO: In production, verify code with Twilio Verify API
   // For MVP, we'll accept any 6-digit code and move forward
 
+  // Bug Fix: Update user.verified_at in database
+  const verifiedAt = new Date();
+  if (userRepository) {
+    await userRepository.update(ctx.user.id, {
+      verified_at: verifiedAt,
+    });
+  }
+
   // Create user.verified event
   const verifiedEvent: OutboxEvent = {
     id: randomUUID(),
@@ -71,7 +87,7 @@ Or reply RESEND to get a new code.`,
     payload: {
       user_id: ctx.user.id,
       phone_number: ctx.user.phone_number,
-      verified_at: new Date().toISOString(),
+      verified_at: verifiedAt.toISOString(),
       correlation_id: ctx.correlationId,
       causation_id: ctx.messageSid,
     },

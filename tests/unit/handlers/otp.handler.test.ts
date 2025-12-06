@@ -11,11 +11,12 @@
  * 4. 3 failed attempts → Send lockout message, delete state
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { otpHandler } from '../../../src/handlers/otp.handler';
 import { FSMState } from '../../../src/services/fsm.service';
 import type { HandlerContext } from '../../../src/handlers';
 import type { User } from '../../../src/db/types';
+import type { UserRepository } from '../../../src/db/repositories/user.repository';
 
 describe('OTP Handler', () => {
   let mockContext: HandlerContext;
@@ -92,6 +93,61 @@ describe('OTP Handler', () => {
       const payload = event.payload as Record<string, any>;
       expect(payload.phone_number).toBe(mockUser.phone_number);
       expect(payload.verified_at).toBeDefined();
+    });
+
+    it('should update user.verified_at when OTP is valid', async () => {
+      // Arrange
+      mockContext.messageBody = '123456';
+      const updatedUser: User = {
+        ...mockUser,
+        verified_at: new Date(),
+      };
+      const mockUserRepository = {
+        update: vi.fn().mockResolvedValue(updatedUser),
+        create: vi.fn(),
+        findByPhone: vi.fn(),
+      } as unknown as UserRepository;
+
+      // Act
+      const result = await otpHandler(mockContext, mockUserRepository);
+
+      // Assert
+      expect(mockUserRepository.update).toHaveBeenCalledWith(
+        mockUser.id,
+        expect.objectContaining({
+          verified_at: expect.any(Date),
+        })
+      );
+      expect(result.nextState).toBe(FSMState.AUTHENTICATED);
+    });
+
+    it('should NOT update user when OTP is invalid', async () => {
+      // Arrange
+      mockContext.messageBody = 'invalid';
+      const mockUserRepository = {
+        update: vi.fn(),
+        create: vi.fn(),
+        findByPhone: vi.fn(),
+      } as unknown as UserRepository;
+
+      // Act
+      const result = await otpHandler(mockContext, mockUserRepository);
+
+      // Assert
+      expect(mockUserRepository.update).not.toHaveBeenCalled();
+      expect(result.nextState).toBe(FSMState.AWAITING_OTP);
+    });
+
+    it('should work without userRepository (backward compatibility)', async () => {
+      // Arrange
+      mockContext.messageBody = '123456';
+
+      // Act
+      const result = await otpHandler(mockContext);
+
+      // Assert - should still publish event
+      expect(result.publishEvents).toBeDefined();
+      expect(result.nextState).toBe(FSMState.AUTHENTICATED);
     });
   });
 

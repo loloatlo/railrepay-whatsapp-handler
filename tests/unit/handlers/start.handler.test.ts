@@ -15,6 +15,7 @@ import { startHandler } from '../../../src/handlers/start.handler';
 import { FSMState } from '../../../src/services/fsm.service';
 import type { HandlerContext } from '../../../src/handlers';
 import type { User } from '../../../src/db/types';
+import type { UserRepository } from '../../../src/db/repositories/user.repository';
 
 describe('Start Handler', () => {
   let mockContext: HandlerContext;
@@ -76,6 +77,103 @@ describe('Start Handler', () => {
       // Assert
       // Start handler doesn't create user - that's done by webhook controller
       expect(result.publishEvents).toBeUndefined();
+    });
+  });
+
+  describe('User Creation (Bug Fix)', () => {
+    it('should create user when ctx.user is null and userRepository provided', async () => {
+      // Arrange
+      mockContext.user = null;
+      const mockUserRepository = {
+        create: vi.fn().mockResolvedValue({
+          id: 'new-user-id',
+          phone_number: '+447700900123',
+          verified_at: null,
+          created_at: new Date(),
+          updated_at: new Date(),
+        }),
+        findByPhone: vi.fn(),
+        update: vi.fn(),
+      } as unknown as UserRepository;
+
+      // Act
+      const result = await startHandler(mockContext, mockUserRepository);
+
+      // Assert
+      expect(mockUserRepository.create).toHaveBeenCalledWith({
+        phone_number: '+447700900123',
+      });
+      expect(result.nextState).toBe(FSMState.AWAITING_TERMS);
+    });
+
+    it('should publish user.registered event when creating new user', async () => {
+      // Arrange
+      mockContext.user = null;
+      const createdUser: User = {
+        id: 'new-user-id',
+        phone_number: '+447700900123',
+        verified_at: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+      const mockUserRepository = {
+        create: vi.fn().mockResolvedValue(createdUser),
+        findByPhone: vi.fn(),
+        update: vi.fn(),
+      } as unknown as UserRepository;
+
+      // Act
+      const result = await startHandler(mockContext, mockUserRepository);
+
+      // Assert
+      expect(result.publishEvents).toBeDefined();
+      expect(result.publishEvents?.length).toBe(1);
+      const event = result.publishEvents![0];
+      expect(event.event_type).toBe('user.registered');
+      expect(event.aggregate_type).toBe('user');
+      expect(event.aggregate_id).toBe(createdUser.id);
+      expect(event.payload).toMatchObject({
+        user_id: createdUser.id,
+        phone_number: createdUser.phone_number,
+        correlation_id: mockContext.correlationId,
+        causation_id: mockContext.messageSid,
+      });
+    });
+
+    it('should NOT create user when ctx.user already exists', async () => {
+      // Arrange
+      const existingUser: User = {
+        id: 'existing-user-id',
+        phone_number: '+447700900123',
+        verified_at: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+      mockContext.user = existingUser;
+      const mockUserRepository = {
+        create: vi.fn(),
+        findByPhone: vi.fn(),
+        update: vi.fn(),
+      } as unknown as UserRepository;
+
+      // Act
+      const result = await startHandler(mockContext, mockUserRepository);
+
+      // Assert - should NOT create user
+      expect(mockUserRepository.create).not.toHaveBeenCalled();
+      expect(result.nextState).toBe(FSMState.AWAITING_TERMS);
+    });
+
+    it('should work without userRepository (backward compatibility)', async () => {
+      // Arrange
+      mockContext.user = null;
+
+      // Act
+      const result = await startHandler(mockContext);
+
+      // Assert - should still return welcome message
+      expect(result.response).toContain('Welcome to RailRepay');
+      expect(result.nextState).toBe(FSMState.AWAITING_TERMS);
     });
   });
 

@@ -160,7 +160,7 @@ export function createWebhookRouter(redis: Redis, dbPool: Pool): Router {
 
       // Get and execute handler for current state
       const handler = getHandler(currentState.state);
-      const handlerResult = await handler(handlerContext);
+      const handlerResult = await handler(handlerContext, userRepository);
 
       // Apply state transition if specified
       if (handlerResult.nextState) {
