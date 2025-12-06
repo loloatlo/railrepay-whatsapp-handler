@@ -52,6 +52,25 @@ interface TwilioWebhookBody {
 }
 
 /**
+ * Normalize Twilio phone number to E.164 format
+ *
+ * Twilio sends phone numbers with channel prefixes:
+ * - WhatsApp: "whatsapp:+447700900123"
+ * - SMS: "sms:+447700900123"
+ * - Voice: "+447700900123" (no prefix)
+ *
+ * This function strips the prefix to get clean E.164 format
+ * required for database storage and UserRepository validation.
+ *
+ * @param from - Twilio From field (e.g., "whatsapp:+447700900123")
+ * @returns E.164 phone number (e.g., "+447700900123")
+ */
+function normalizePhoneNumber(from: string): string {
+  // Strip whatsapp: or sms: prefix if present
+  return from.replace(/^(whatsapp|sms):/, '');
+}
+
+/**
  * Create webhook router with dependencies injected
  *
  * @param redis - ioredis client for rate limiting, idempotency, and FSM state
@@ -118,7 +137,7 @@ export function createWebhookRouter(redis: Redis, dbPool: Pool): Router {
 
       // Extract message details
       const messageSid = body.MessageSid;
-      const phoneNumber = body.From; // E.g., "whatsapp:+447700900123"
+      const phoneNumber = normalizePhoneNumber(body.From); // E.164: "+447700900123"
       const messageBody = body.Body || '';
       // const numMedia = parseInt(body.NumMedia || '0', 10);
       const mediaUrl = body.MediaUrl0;

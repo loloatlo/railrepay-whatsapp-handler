@@ -482,4 +482,91 @@ describe('Webhook Route', () => {
       // FSM getState should have been called
     });
   });
+
+  describe('Phone number normalization', () => {
+    it('should strip whatsapp: prefix from phone number for handler context', async () => {
+      // Import getHandler to check what phone number was passed
+      const { getHandler } = await import('../../../src/handlers/index.js');
+      const mockHandler = vi.fn().mockResolvedValue({
+        response: 'Test response',
+        nextState: undefined,
+      });
+      (getHandler as any).mockReturnValue(mockHandler);
+
+      await request(app)
+        .post('/webhook/twilio')
+        .type('form')
+        .send({
+          MessageSid: 'SM123',
+          From: 'whatsapp:+447700900123',
+          To: 'whatsapp:+447700900000',
+          Body: 'Hi',
+          NumMedia: '0',
+        });
+
+      // Verify handler was called with E.164 format (no whatsapp: prefix)
+      expect(mockHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          phoneNumber: '+447700900123', // NOT "whatsapp:+447700900123"
+        }),
+        expect.anything()
+      );
+    });
+
+    it('should handle phone number without whatsapp: prefix', async () => {
+      const { getHandler } = await import('../../../src/handlers/index.js');
+      const mockHandler = vi.fn().mockResolvedValue({
+        response: 'Test response',
+        nextState: undefined,
+      });
+      (getHandler as any).mockReturnValue(mockHandler);
+
+      await request(app)
+        .post('/webhook/twilio')
+        .type('form')
+        .send({
+          MessageSid: 'SM456',
+          From: '+447700900123', // Already E.164 format
+          To: 'whatsapp:+447700900000',
+          Body: 'Hi',
+          NumMedia: '0',
+        });
+
+      // Should pass through unchanged
+      expect(mockHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          phoneNumber: '+447700900123',
+        }),
+        expect.anything()
+      );
+    });
+
+    it('should handle sms: prefix from Twilio SMS', async () => {
+      const { getHandler } = await import('../../../src/handlers/index.js');
+      const mockHandler = vi.fn().mockResolvedValue({
+        response: 'Test response',
+        nextState: undefined,
+      });
+      (getHandler as any).mockReturnValue(mockHandler);
+
+      await request(app)
+        .post('/webhook/twilio')
+        .type('form')
+        .send({
+          MessageSid: 'SM789',
+          From: 'sms:+447700900123',
+          To: 'whatsapp:+447700900000',
+          Body: 'Hi',
+          NumMedia: '0',
+        });
+
+      // Should strip sms: prefix too
+      expect(mockHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          phoneNumber: '+447700900123',
+        }),
+        expect.anything()
+      );
+    });
+  });
 });
