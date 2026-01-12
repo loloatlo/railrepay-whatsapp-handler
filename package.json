@@ -34,7 +34,7 @@
   "author": "RailRepay",
   "license": "UNLICENSED",
   "dependencies": {
-    "@railrepay/metrics-pusher": "^1.0.0",
+    "@railrepay/metrics-pusher": "^1.1.0",
     "@railrepay/postgres-client": "^1.0.0",
     "@railrepay/redis-cache": "^1.0.0",
     "@railrepay/winston-logger": "^1.0.0",
