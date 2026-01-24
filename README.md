@@ -73,6 +73,12 @@ TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
 
 # Redis
 REDIS_URL=redis://localhost:6379
+
+# Journey Matcher (TD-WHATSAPP-028)
+# Base URL for journey-matcher API (used for routing suggestions)
+# Development: http://localhost:3001
+# Production: http://journey-matcher.railway.internal:3001
+JOURNEY_MATCHER_URL=http://localhost:3001
 ```
 
 ### Database Migrations
