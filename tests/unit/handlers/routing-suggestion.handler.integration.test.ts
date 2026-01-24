@@ -35,14 +35,18 @@ import axios from 'axios';
 // Mock axios for HTTP client testing
 vi.mock('axios');
 
+// Create shared logger instance OUTSIDE the factory function
+// This ensures all calls to createLogger() return the SAME instance
+const sharedLogger = {
+  info: vi.fn(),
+  error: vi.fn(),
+  warn: vi.fn(),
+  debug: vi.fn(),
+};
+
 // Mock winston logger to prevent "mockLogger is not defined" errors
 vi.mock('@railrepay/winston-logger', () => ({
-  createLogger: vi.fn(() => ({
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-  })),
+  createLogger: vi.fn(() => sharedLogger),
 }));
 
 describe('TD-WHATSAPP-028: Journey-Matcher Integration (Real HTTP Client)', () => {
@@ -76,6 +80,12 @@ describe('TD-WHATSAPP-028: Journey-Matcher Integration (Real HTTP Client)', () =
 
     // Clear all mocks between tests
     vi.clearAllMocks();
+
+    // Clear shared logger call history
+    sharedLogger.info.mockClear();
+    sharedLogger.error.mockClear();
+    sharedLogger.warn.mockClear();
+    sharedLogger.debug.mockClear();
   });
 
   afterEach(() => {
@@ -367,9 +377,6 @@ describe('TD-WHATSAPP-028: Journey-Matcher Integration (Real HTTP Client)', () =
        * Currently: No logging
        * Expected: Winston logger called with error details and correlationId
        */
-      const { createLogger } = await import('@railrepay/winston-logger');
-      const mockLoggerInstance = vi.mocked(createLogger)();
-
       vi.mocked(axios.get).mockRejectedValueOnce({
         response: {
           status: 503,
@@ -383,7 +390,7 @@ describe('TD-WHATSAPP-028: Journey-Matcher Integration (Real HTTP Client)', () =
       // ASSERT: Error logged with correlation ID
       // Note: This assertion may need adjustment based on actual logger implementation
       // Blake will implement logging that includes correlationId and error details
-      expect(mockLoggerInstance.error).toHaveBeenCalled();
+      expect(sharedLogger.error).toHaveBeenCalled();
     });
   });
 

@@ -26,6 +26,20 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { FSMState } from '../../../src/services/fsm.service';
 import type { HandlerContext } from '../../../src/handlers';
 import type { User } from '../../../src/db/types';
+import axios from 'axios';
+
+// Mock axios for HTTP client testing
+vi.mock('axios');
+
+// Mock winston logger
+vi.mock('@railrepay/winston-logger', () => ({
+  createLogger: vi.fn(() => ({
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+  })),
+}));
 
 /**
  * IMPORT NOTE: These handlers DO NOT exist yet - Blake will create them
@@ -63,6 +77,28 @@ describe('US-XXX: Submitting a Journey to RailRepay', () => {
         currentState: FSMState.AWAITING_ROUTING_CONFIRM,
         correlationId: 'test-corr-id',
       };
+
+      // Setup environment variable for journey-matcher API
+      process.env.JOURNEY_MATCHER_URL = 'http://journey-matcher.test:3001';
+
+      // Mock axios GET for journey-matcher API
+      vi.mocked(axios.get).mockResolvedValue({
+        status: 200,
+        data: {
+          routes: [
+            {
+              legs: [
+                { from: 'PAD', to: 'BRI', operator: 'GWR', departure: '10:00', arrival: '11:30' },
+                { from: 'BRI', to: 'CDF', operator: 'GWR', departure: '11:45', arrival: '12:15' },
+              ],
+              totalDuration: '2h 15m',
+            },
+          ],
+        },
+      });
+
+      // Clear mock call history
+      vi.clearAllMocks();
     });
 
     describe('When journey requires interchange', () => {
@@ -92,6 +128,9 @@ describe('US-XXX: Submitting a Journey to RailRepay', () => {
           ...mockContext,
           currentState: FSMState.AWAITING_JOURNEY_TIME, // State before transition
           messageBody: '10:00', // User submitted journey time
+          stateData: {
+            journeyId: journeyData.journeyId, // Required for journey-matcher API call
+          },
         });
 
         // Assert: Response contains route breakdown
@@ -119,6 +158,9 @@ describe('US-XXX: Submitting a Journey to RailRepay', () => {
           ...mockContext,
           currentState: FSMState.AWAITING_JOURNEY_TIME,
           messageBody: '10:00',
+          stateData: {
+            journeyId: 'journey-456', // Required for journey-matcher API call
+          },
         });
 
         // Assert: Message asks for confirmation
