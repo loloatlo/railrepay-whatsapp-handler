@@ -75,8 +75,12 @@ describe('TD-WHATSAPP-028: Journey-Matcher Integration (Real HTTP Client)', () =
         origin: 'PAD',
         destination: 'CDF',
         travelDate: '2025-01-24',
+        departureTime: '10:00',
       },
     };
+
+    // Setup environment variable (per Section 6.2.1)
+    process.env.JOURNEY_MATCHER_URL = 'http://journey-matcher.test:3001';
 
     // Clear all mocks between tests
     vi.clearAllMocks();
@@ -89,15 +93,16 @@ describe('TD-WHATSAPP-028: Journey-Matcher Integration (Real HTTP Client)', () =
   });
 
   afterEach(() => {
+    delete process.env.JOURNEY_MATCHER_URL;
     vi.restoreAllMocks();
   });
 
   describe('AC-1: HTTP Call to Journey-Matcher API', () => {
-    it('should make GET request to journey-matcher /journeys/:id/routes endpoint', async () => {
+    it('should make GET request to journey-matcher /routes with query parameters', async () => {
       /**
        * BEHAVIOR: Handler must call journey-matcher API to fetch real routes
-       * Currently: Handler uses hardcoded mock routes
-       * Expected: Handler makes HTTP GET to JOURNEY_MATCHER_URL/journeys/{journeyId}/routes
+       * Per TD-WHATSAPP-028: Uses GET /routes?from=...&to=...&date=...&time=...
+       * Expected: Handler makes HTTP GET with query params from stateData
        */
       const mockRoutes = {
         routes: [
@@ -118,10 +123,10 @@ describe('TD-WHATSAPP-028: Journey-Matcher Integration (Real HTTP Client)', () =
 
       await routingSuggestionHandler(mockContext);
 
-      // ASSERT: HTTP GET called with correct URL
+      // ASSERT: HTTP GET called with correct URL and query params
       expect(axios.get).toHaveBeenCalledTimes(1);
       expect(axios.get).toHaveBeenCalledWith(
-        expect.stringContaining('/journeys/journey-456/routes'),
+        'http://journey-matcher.test:3001/routes?from=PAD&to=CDF&date=2025-01-24&time=10:00',
         expect.any(Object)
       );
     });
@@ -129,7 +134,7 @@ describe('TD-WHATSAPP-028: Journey-Matcher Integration (Real HTTP Client)', () =
     it('should use JOURNEY_MATCHER_URL environment variable to construct API URL', async () => {
       /**
        * BEHAVIOR: URL must be configurable via environment variable
-       * Currently: No environment variable used
+       * Per TD-WHATSAPP-028: Uses GET /routes with query parameters
        * Expected: process.env.JOURNEY_MATCHER_URL used as base URL
        */
       process.env.JOURNEY_MATCHER_URL = 'http://journey-matcher.railway.internal:3001';
@@ -153,28 +158,30 @@ describe('TD-WHATSAPP-028: Journey-Matcher Integration (Real HTTP Client)', () =
 
       await routingSuggestionHandler(mockContext);
 
-      // ASSERT: Full URL includes JOURNEY_MATCHER_URL base
+      // ASSERT: Full URL includes JOURNEY_MATCHER_URL base with query params
       expect(axios.get).toHaveBeenCalledWith(
-        'http://journey-matcher.railway.internal:3001/journeys/journey-456/routes',
+        'http://journey-matcher.railway.internal:3001/routes?from=PAD&to=CDF&date=2025-01-24&time=10:00',
         expect.any(Object)
       );
 
-      // Cleanup
+      // Cleanup (will also be cleaned in afterEach, but explicit here)
       delete process.env.JOURNEY_MATCHER_URL;
     });
 
-    it('should extract journeyId from context stateData for API call', async () => {
+    it('should extract origin/destination/date/time from context stateData for API call', async () => {
       /**
-       * BEHAVIOR: journeyId must come from FSM state data, not message body
-       * Currently: Hardcoded in handler
-       * Expected: Read from ctx.stateData.journeyId
+       * BEHAVIOR: Query params must come from FSM state data, not message body
+       * Per TD-WHATSAPP-028: Uses from/to/date/time query params from stateData
+       * Expected: Read from ctx.stateData
        */
-      const differentJourneyId = 'journey-999';
-      const contextWithDifferentJourney = {
+      const contextWithDifferentData = {
         ...mockContext,
         stateData: {
-          ...mockContext.stateData,
-          journeyId: differentJourneyId,
+          journeyId: 'journey-999',
+          origin: 'KGX',
+          destination: 'EDB',
+          travelDate: '2025-02-14',
+          departureTime: '14:30',
         },
       };
 
@@ -184,19 +191,19 @@ describe('TD-WHATSAPP-028: Journey-Matcher Integration (Real HTTP Client)', () =
           routes: [
             {
               legs: [
-                { from: 'PAD', to: 'RDG', operator: 'GWR', departure: '10:00', arrival: '10:30' },
+                { from: 'KGX', to: 'EDB', operator: 'LNER', departure: '14:30', arrival: '19:00' },
               ],
-              totalDuration: '30m',
+              totalDuration: '4h 30m',
             },
           ],
         },
       });
 
-      await routingSuggestionHandler(contextWithDifferentJourney);
+      await routingSuggestionHandler(contextWithDifferentData);
 
-      // ASSERT: API called with journeyId from stateData
+      // ASSERT: API called with query params from stateData
       expect(axios.get).toHaveBeenCalledWith(
-        expect.stringContaining(`/journeys/${differentJourneyId}/routes`),
+        'http://journey-matcher.test:3001/routes?from=KGX&to=EDB&date=2025-02-14&time=14:30',
         expect.any(Object)
       );
     });
@@ -435,9 +442,9 @@ describe('TD-WHATSAPP-028: Journey-Matcher Integration (Real HTTP Client)', () =
 
       await routingSuggestionHandler(mockContext);
 
-      // ASSERT: Production URL used
+      // ASSERT: Production URL used with query params
       expect(axios.get).toHaveBeenCalledWith(
-        expect.stringContaining('https://journey-matcher.production.railrepay.com'),
+        'https://journey-matcher.production.railrepay.com/routes?from=PAD&to=CDF&date=2025-01-24&time=10:00',
         expect.any(Object)
       );
 
@@ -561,9 +568,9 @@ describe('TD-WHATSAPP-028: Journey-Matcher Integration (Real HTTP Client)', () =
 
       const result = await routingSuggestionHandler(mockContext);
 
-      // ASSERT: API called with correlation ID
+      // ASSERT: API called with query params and correlation ID
       expect(axios.get).toHaveBeenCalledWith(
-        'http://journey-matcher.railway.internal:3001/journeys/journey-456/routes',
+        'http://journey-matcher.railway.internal:3001/routes?from=PAD&to=CDF&date=2025-01-24&time=10:00',
         expect.objectContaining({
           headers: expect.objectContaining({
             'X-Correlation-ID': 'test-corr-id-12345',

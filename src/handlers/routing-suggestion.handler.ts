@@ -31,8 +31,10 @@ export async function routingSuggestionHandler(ctx: HandlerContext): Promise<Han
       throw new Error('JOURNEY_MATCHER_URL environment variable is not configured');
     }
 
-    // Extract journeyId from FSM state data (AC-1)
-    const journeyId = ctx.stateData?.journeyId;
+    // Extract required fields from FSM state data (AC-1)
+    const { journeyId, origin, destination, travelDate, departureTime } = ctx.stateData || {};
+
+    // Validate required fields
     if (!journeyId) {
       logger.error('Missing journeyId in state data', {
         correlationId: ctx.correlationId,
@@ -43,12 +45,33 @@ export async function routingSuggestionHandler(ctx: HandlerContext): Promise<Han
       };
     }
 
+    if (!origin || !destination || !travelDate || !departureTime) {
+      logger.error('Missing required journey details in state data', {
+        correlationId: ctx.correlationId,
+        missingFields: {
+          origin: !origin,
+          destination: !destination,
+          travelDate: !travelDate,
+          departureTime: !departureTime,
+        },
+      });
+      return {
+        response: 'Something went wrong. Please try again.',
+        nextState: FSMState.ERROR,
+      };
+    }
+
     try {
       // Make HTTP call to journey-matcher API (AC-1, AC-5)
-      const apiUrl = `${journeyMatcherUrl}/journeys/${journeyId}/routes`;
+      // Per TD-WHATSAPP-028: Use GET /routes with query parameters
+      const apiUrl = `${journeyMatcherUrl}/routes?from=${origin}&to=${destination}&date=${travelDate}&time=${departureTime}`;
       logger.info('Fetching routes from journey-matcher', {
         correlationId: ctx.correlationId,
         journeyId,
+        origin,
+        destination,
+        travelDate,
+        departureTime,
         apiUrl,
       });
 
@@ -112,15 +135,28 @@ export async function routingSuggestionHandler(ctx: HandlerContext): Promise<Han
 
       // Handle different error scenarios (AC-3)
       // Check for HTTP response errors first
+      if (error.response?.status === 400) {
+        // Bad request (missing or invalid query params)
+        logger.error('Journey-matcher bad request', {
+          correlationId: ctx.correlationId,
+          journeyId,
+          status: 400,
+        });
+        return {
+          response: 'The journey routing service is temporarily unavailable. Please try again later.',
+          nextState: FSMState.ERROR,
+        };
+      }
+
       if (error.response?.status === 404) {
-        // Journey not found
-        logger.error('Journey not found in journey-matcher', {
+        // No routes found
+        logger.error('No routes found in journey-matcher', {
           correlationId: ctx.correlationId,
           journeyId,
           status: 404,
         });
         return {
-          response: 'We were unable to find your journey. Please try again.',
+          response: 'We were unable to find any routes for your journey. Please try again.',
           nextState: FSMState.ERROR,
         };
       }

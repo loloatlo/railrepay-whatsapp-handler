@@ -17,38 +17,40 @@
  * - No placeholder assertions (all assertions are completable)
  *
  * INTEGRATION POINTS:
- * - journey-matcher service: GET /journeys/:id/routes (returns ranked routes)
+ * - journey-matcher service: GET /routes?from=...&to=...&date=...&time=... (returns ranked routes)
  * - otp-router service: via journey-matcher (graph-based routing)
  * - FSM states: AWAITING_ROUTING_CONFIRM, AWAITING_ROUTING_ALTERNATIVE
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { FSMState } from '../../../src/services/fsm.service';
 import type { HandlerContext } from '../../../src/handlers';
 import type { User } from '../../../src/db/types';
-import axios from 'axios';
+
+// Mock winston logger (infrastructure package mocking per Section 6.1.11)
+const sharedLogger = {
+  info: vi.fn(),
+  error: vi.fn(),
+  warn: vi.fn(),
+  debug: vi.fn(),
+};
+
+vi.mock('@railrepay/winston-logger', () => ({
+  createLogger: vi.fn(() => sharedLogger),
+}));
 
 // Mock axios for HTTP client testing
 vi.mock('axios');
 
-// Mock winston logger
-vi.mock('@railrepay/winston-logger', () => ({
-  createLogger: vi.fn(() => ({
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-  })),
-}));
-
 /**
- * IMPORT NOTE: These handlers DO NOT exist yet - Blake will create them
- * This test file will initially have import errors - that's expected
+ * TD-WHATSAPP-028: Updated to mock axios for journey-matcher integration
+ * Tests verify correct HTTP calls are made to journey-matcher service
+ * Per Test Lock Rule: Blake MUST NOT modify these tests
  */
-// @ts-expect-error - Handler does not exist yet, Blake will create
 import { routingSuggestionHandler } from '../../../src/handlers/routing-suggestion.handler';
 // @ts-expect-error - Handler does not exist yet, Blake will create
 import { routingAlternativeHandler } from '../../../src/handlers/routing-alternative.handler';
+import axios from 'axios';
 
 describe('US-XXX: Submitting a Journey to RailRepay', () => {
   describe('AC-2: Routing Suggestion Handler (Complex Journey with Interchanges)', () => {
@@ -81,7 +83,11 @@ describe('US-XXX: Submitting a Journey to RailRepay', () => {
       // Setup environment variable for journey-matcher API
       process.env.JOURNEY_MATCHER_URL = 'http://journey-matcher.test:3001';
 
-      // Mock axios GET for journey-matcher API
+      // TD-WHATSAPP-028: Handler now uses REAL HTTP client to journey-matcher
+      // Endpoint: GET /routes?from=...&to=...&date=...&time=...
+      // Blake implemented this in Phase TD-2
+
+      // Mock axios response for journey-matcher API
       vi.mocked(axios.get).mockResolvedValue({
         status: 200,
         data: {
@@ -99,6 +105,11 @@ describe('US-XXX: Submitting a Journey to RailRepay', () => {
 
       // Clear mock call history
       vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+      // Clean up environment variables (per Section 6.2.1)
+      delete process.env.JOURNEY_MATCHER_URL;
     });
 
     describe('When journey requires interchange', () => {
@@ -130,6 +141,10 @@ describe('US-XXX: Submitting a Journey to RailRepay', () => {
           messageBody: '10:00', // User submitted journey time
           stateData: {
             journeyId: journeyData.journeyId, // Required for journey-matcher API call
+            origin: 'PAD',
+            destination: 'CDF',
+            travelDate: '2024-12-20',
+            departureTime: '10:00',
           },
         });
 
@@ -160,6 +175,10 @@ describe('US-XXX: Submitting a Journey to RailRepay', () => {
           messageBody: '10:00',
           stateData: {
             journeyId: 'journey-456', // Required for journey-matcher API call
+            origin: 'PAD',
+            destination: 'CDF',
+            travelDate: '2024-12-20',
+            departureTime: '10:00',
           },
         });
 
