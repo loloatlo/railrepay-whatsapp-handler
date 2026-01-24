@@ -13,15 +13,15 @@ export async function journeyConfirmHandler(ctx: HandlerContext): Promise<Handle
 
   if (input === 'YES') {
     return {
-      response: `Perfect! Now please send a photo of your ticket.
-
-You can:
-• Take a photo of your physical ticket
-• Screenshot your e-ticket
-• Upload your ticket PDF
-
-Or reply SKIP to submit without a ticket (for MVP testing).`,
-      nextState: FSMState.AWAITING_TICKET_UPLOAD,
+      response: `Perfect! Let me check for alternative routing options that might be eligible for compensation...`,
+      nextState: FSMState.AWAITING_ROUTING_CONFIRM,
+      stateData: {
+        journeyId: ctx.stateData?.journeyId,
+        origin: ctx.stateData?.origin,
+        destination: ctx.stateData?.destination,
+        travelDate: ctx.stateData?.travelDate,
+        departureTime: ctx.stateData?.departureTime,
+      },
     };
   }
 

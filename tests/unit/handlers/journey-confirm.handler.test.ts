@@ -35,17 +35,39 @@ describe('Journey Confirm Handler', () => {
   });
 
   describe('Confirmation accepted (YES)', () => {
-    it('should accept "YES"', async () => {
+    it('should accept "YES" and transition to routing confirmation', async () => {
+      // Per TD-WHATSAPP-034: Should transition to AWAITING_ROUTING_CONFIRM, NOT AWAITING_TICKET_UPLOAD
+      // This allows routing-suggestion.handler to check for interchanges
       mockContext.messageBody = 'YES';
       const result = await journeyConfirmHandler(mockContext);
-      expect(result.response).toContain('ticket');
-      expect(result.nextState).toBe(FSMState.AWAITING_TICKET_UPLOAD);
+      expect(result.response).toContain('routing');
+      expect(result.nextState).toBe(FSMState.AWAITING_ROUTING_CONFIRM);
     });
 
     it('should accept "yes" (lowercase)', async () => {
       mockContext.messageBody = 'yes';
       const result = await journeyConfirmHandler(mockContext);
-      expect(result.nextState).toBe(FSMState.AWAITING_TICKET_UPLOAD);
+      expect(result.nextState).toBe(FSMState.AWAITING_ROUTING_CONFIRM);
+    });
+
+    it('should preserve journey data in stateData for routing handler', async () => {
+      // Per TD-WHATSAPP-034: Routing handler needs journeyId, origin, destination, travelDate, departureTime
+      mockContext.messageBody = 'YES';
+      mockContext.stateData = {
+        journeyId: 'journey-abc123',
+        origin: 'Paddington',
+        destination: 'Bristol Temple Meads',
+        travelDate: '2024-11-20',
+        departureTime: '10:15',
+      };
+
+      const result = await journeyConfirmHandler(mockContext);
+      expect(result.stateData).toBeDefined();
+      expect(result.stateData?.journeyId).toBe('journey-abc123');
+      expect(result.stateData?.origin).toBe('Paddington');
+      expect(result.stateData?.destination).toBe('Bristol Temple Meads');
+      expect(result.stateData?.travelDate).toBe('2024-11-20');
+      expect(result.stateData?.departureTime).toBe('10:15');
     });
   });
 
