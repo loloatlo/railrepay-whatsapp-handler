@@ -1,0 +1,44 @@
+{
+  "_fixtureMetadata": {
+    "source": "eligibility-engine service mock responses",
+    "description": "Mock responses from eligibility-engine for journey eligibility evaluation",
+    "createdBy": "Jessie QA",
+    "date": "2025-01-24"
+  },
+  "eligibleResponse": {
+    "eligible": true,
+    "delayMinutes": 45,
+    "compensationAmount": "£15.00",
+    "compensationPercentage": 25,
+    "tocCode": "GW",
+    "rulepackApplied": "GW_DELAY_REPAY"
+  },
+  "ineligibleResponse": {
+    "eligible": false,
+    "delayMinutes": 10,
+    "ineligibilityReason": "Delay under minimum threshold (15 minutes)",
+    "tocCode": "GW"
+  },
+  "exactThresholdResponse": {
+    "eligible": true,
+    "delayMinutes": 15,
+    "compensationAmount": "£10.00",
+    "compensationPercentage": 25,
+    "tocCode": "GW"
+  },
+  "underThresholdResponse": {
+    "eligible": false,
+    "delayMinutes": 14,
+    "ineligibilityReason": "Delay under minimum threshold (15 minutes)",
+    "tocCode": "GW"
+  },
+  "noDelayDataResponse": {
+    "eligible": null,
+    "delayDataAvailable": false,
+    "message": "Delay data not yet available for this journey date"
+  },
+  "serviceUnavailableResponse": {
+    "serviceUnavailable": true,
+    "error": "Service temporarily unavailable"
+  }
+}

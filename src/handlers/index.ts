@@ -30,6 +30,8 @@ export interface HandlerContext {
   user: User | null; // User record (null if not registered)
   currentState: FSMState; // Current FSM state
   correlationId: string; // For distributed tracing (ADR-002)
+  stateData?: Record<string, any>; // Optional state data from FSM (for preserving state across handler calls)
+  [key: string]: any; // Allow additional properties for flexibility
 }
 
 /**
@@ -108,6 +110,8 @@ export async function initializeHandlers(): Promise<void> {
   const { journeyStationsHandler } = await import('./journey-stations.handler.js');
   const { journeyTimeHandler } = await import('./journey-time.handler.js');
   const { journeyConfirmHandler } = await import('./journey-confirm.handler.js');
+  const { routingSuggestionHandler } = await import('./routing-suggestion.handler.js');
+  const { routingAlternativeHandler } = await import('./routing-alternative.handler.js');
   const { ticketUploadHandler } = await import('./ticket-upload.handler.js');
 
   registerHandler(FSMState.START, startHandler);
@@ -118,5 +122,7 @@ export async function initializeHandlers(): Promise<void> {
   registerHandler(FSMState.AWAITING_JOURNEY_STATIONS, journeyStationsHandler);
   registerHandler(FSMState.AWAITING_JOURNEY_TIME, journeyTimeHandler);
   registerHandler(FSMState.AWAITING_JOURNEY_CONFIRM, journeyConfirmHandler);
+  registerHandler(FSMState.AWAITING_ROUTING_CONFIRM, routingSuggestionHandler);
+  registerHandler(FSMState.AWAITING_ROUTING_ALTERNATIVE, routingAlternativeHandler);
   registerHandler(FSMState.AWAITING_TICKET_UPLOAD, ticketUploadHandler);
 }

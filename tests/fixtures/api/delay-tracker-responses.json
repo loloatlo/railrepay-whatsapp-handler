@@ -1,0 +1,18 @@
+{
+  "_fixtureMetadata": {
+    "source": "delay-tracker service mock responses",
+    "description": "Mock responses from delay-tracker for journey tracking registration",
+    "createdBy": "Jessie QA",
+    "date": "2025-01-24"
+  },
+  "trackingRegisteredResponse": {
+    "registered": true,
+    "trackingId": "track-abc123",
+    "journeyId": "journey-future-890",
+    "monitoringStartDate": "2024-11-21T00:00:00Z"
+  },
+  "serviceUnavailableResponse": {
+    "serviceUnavailable": true,
+    "error": "delay-tracker service temporarily unavailable"
+  }
+}

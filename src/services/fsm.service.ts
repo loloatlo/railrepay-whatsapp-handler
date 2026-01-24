@@ -23,7 +23,7 @@
 import type Redis from 'ioredis';
 
 /**
- * FSM States (11 total)
+ * FSM States (13 total)
  * Per specification § WhatsApp Message Flow
  */
 export enum FSMState {
@@ -35,6 +35,8 @@ export enum FSMState {
   AWAITING_JOURNEY_STATIONS = 'AWAITING_JOURNEY_STATIONS', // Awaiting FROM/TO stations
   AWAITING_JOURNEY_TIME = 'AWAITING_JOURNEY_TIME', // Awaiting journey time
   AWAITING_JOURNEY_CONFIRM = 'AWAITING_JOURNEY_CONFIRM', // Journey summary shown, awaiting YES/NO
+  AWAITING_ROUTING_CONFIRM = 'AWAITING_ROUTING_CONFIRM', // Routing suggestion shown, awaiting YES/NO (AC-2)
+  AWAITING_ROUTING_ALTERNATIVE = 'AWAITING_ROUTING_ALTERNATIVE', // Alternative routes shown, awaiting selection (AC-3)
   AWAITING_TICKET_UPLOAD = 'AWAITING_TICKET_UPLOAD', // Awaiting ticket photo
   AWAITING_CLAIM_STATUS = 'AWAITING_CLAIM_STATUS', // User requested status check
   ERROR = 'ERROR', // Invalid state or timeout (recovery state)
