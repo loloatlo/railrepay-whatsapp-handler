@@ -79,6 +79,7 @@ export async function routingSuggestionHandler(ctx: HandlerContext): Promise<Han
         headers: {
           'X-Correlation-ID': ctx.correlationId, // AC-5: Correlation ID propagation
         },
+        timeout: 15000, // TD-WHATSAPP-039: 15 second timeout
       });
 
       // Parse API response (AC-2)
@@ -176,10 +177,10 @@ export async function routingSuggestionHandler(ctx: HandlerContext): Promise<Han
 
       if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
         // Timeout
-        logger.error('Journey-matcher timeout', {
+        logger.error('journey-matcher timeout', {
           correlationId: ctx.correlationId,
           journeyId,
-          code: error.code,
+          error: error.code || error.message,
         });
         return {
           response: 'The journey routing service is unavailable. Please try again later.',

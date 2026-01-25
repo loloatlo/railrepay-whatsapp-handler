@@ -175,6 +175,7 @@ export function createWebhookRouter(redis: Redis, dbPool: Pool): Router {
         user,
         currentState: currentState.state,
         correlationId,
+        stateData: currentState.data,
       };
 
       // Get and execute handler for current state

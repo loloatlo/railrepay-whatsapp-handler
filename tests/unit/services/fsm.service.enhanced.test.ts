@@ -14,7 +14,6 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { FsmService, FSMState } from '../../../src/services/fsm.service';
-import type { FSMStateData } from '../../../src/services/fsm.service';
 import type Redis from 'ioredis';
 
 describe('FSM Service - Enhanced States for Journey Routing', () => {

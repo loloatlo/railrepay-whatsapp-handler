@@ -56,26 +56,26 @@ async function verifyMigration() {
           : tableName;
         console.log(`  - createTable('${fullTableName}', ${Object.keys(columns).length} columns)`);
       },
-      addConstraint: (tableName: any, constraintName: string, constraint: any) => {
+      addConstraint: (tableName: any, constraintName: string, _constraint: any) => {
         const fullTableName = typeof tableName === 'object'
           ? `${tableName.schema}.${tableName.name}`
           : tableName;
         console.log(`  - addConstraint('${fullTableName}', '${constraintName}')`);
       },
-      createIndex: (tableName: any, columns: any, options?: any) => {
+      createIndex: (tableName: any, _columns: any, options?: any) => {
         const fullTableName = typeof tableName === 'object'
           ? `${tableName.schema}.${tableName.name}`
           : tableName;
         const indexName = options?.name || 'unnamed_index';
         console.log(`  - createIndex('${fullTableName}', '${indexName}')`);
       },
-      dropTable: (tableName: any, options?: any) => {
+      dropTable: (tableName: any, _options?: any) => {
         const fullTableName = typeof tableName === 'object'
           ? `${tableName.schema}.${tableName.name}`
           : tableName;
         console.log(`  - dropTable('${fullTableName}')`);
       },
-      dropSchema: (name: string, options?: any) => {
+      dropSchema: (name: string, _options?: any) => {
         console.log(`  - dropSchema('${name}')`);
       },
       func: (name: string) => {

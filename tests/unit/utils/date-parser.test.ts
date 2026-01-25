@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { parseDate, DateParseResult } from '../../../src/utils/date-parser';
+import { parseDate } from '../../../src/utils/date-parser';
 
 describe('Date Parser', () => {
   beforeEach(() => {

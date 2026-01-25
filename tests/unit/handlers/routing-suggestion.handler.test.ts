@@ -255,6 +255,143 @@ describe('US-XXX: Submitting a Journey to RailRepay', () => {
         expect(result.nextState).toBe(FSMState.AWAITING_ROUTING_CONFIRM);
       });
     });
+
+    describe('TD-WHATSAPP-039: Timeout on External HTTP Calls', () => {
+      /**
+       * TD CONTEXT: routing-suggestion.handler makes HTTP calls to journey-matcher without timeout
+       * REQUIRED FIX: All axios calls must include timeout: 15000 (15 seconds)
+       * ERROR HANDLING: Timeout errors must return user-friendly message and transition to ERROR state
+       */
+      beforeEach(() => {
+        // Ensure environment variable is set (per Section 6.2.1)
+        process.env.JOURNEY_MATCHER_URL = 'http://journey-matcher.test:3001';
+      });
+
+      afterEach(() => {
+        delete process.env.JOURNEY_MATCHER_URL;
+      });
+
+      it('should include timeout option in axios HTTP call (was: no timeout configured)', async () => {
+        // Arrange: Mock axios to capture config
+        const axiosGetSpy = vi.spyOn(axios, 'get');
+        axiosGetSpy.mockResolvedValue({
+          status: 200,
+          data: {
+            routes: [{
+              legs: [
+                { from: 'PAD', to: 'BRI', operator: 'GWR', departure: '10:00', arrival: '11:30' },
+              ],
+              totalDuration: '1h 30m',
+            }],
+          },
+        });
+
+        // Act: Trigger routing suggestion handler
+        await routingSuggestionHandler({
+          ...mockContext,
+          currentState: FSMState.AWAITING_JOURNEY_TIME,
+          messageBody: '10:00',
+          stateData: {
+            journeyId: 'journey-456',
+            origin: 'PAD',
+            destination: 'BRI',
+            travelDate: '2024-12-20',
+            departureTime: '10:00',
+          },
+        });
+
+        // Assert: Verify axios.get was called with timeout config
+        expect(axiosGetSpy).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({
+            timeout: 15000, // 15 seconds
+          })
+        );
+      });
+
+      it('should return user-friendly message when journey-matcher times out (was: unhandled timeout)', async () => {
+        // Arrange: Mock axios to throw timeout error (ECONNABORTED)
+        const timeoutError = new Error('timeout of 15000ms exceeded');
+        (timeoutError as any).code = 'ECONNABORTED';
+        vi.mocked(axios.get).mockRejectedValue(timeoutError);
+
+        // Act
+        const result = await routingSuggestionHandler({
+          ...mockContext,
+          currentState: FSMState.AWAITING_JOURNEY_TIME,
+          messageBody: '10:00',
+          stateData: {
+            journeyId: 'journey-456',
+            origin: 'PAD',
+            destination: 'CDF',
+            travelDate: '2024-12-20',
+            departureTime: '10:00',
+          },
+        });
+
+        // Assert: User receives friendly error message (not technical error)
+        expect(result.response).toContain('journey routing service');
+        expect(result.response).toContain('unavailable');
+        expect(result.response).toContain('try again later');
+        expect(result.response).not.toContain('ECONNABORTED'); // No technical error exposed
+        expect(result.response).not.toContain('timeout'); // No technical jargon
+      });
+
+      it('should transition to ERROR state when timeout occurs', async () => {
+        // Arrange
+        const timeoutError = new Error('timeout of 15000ms exceeded');
+        (timeoutError as any).code = 'ECONNABORTED';
+        vi.mocked(axios.get).mockRejectedValue(timeoutError);
+
+        // Act
+        const result = await routingSuggestionHandler({
+          ...mockContext,
+          currentState: FSMState.AWAITING_JOURNEY_TIME,
+          messageBody: '10:00',
+          stateData: {
+            journeyId: 'journey-456',
+            origin: 'PAD',
+            destination: 'CDF',
+            travelDate: '2024-12-20',
+            departureTime: '10:00',
+          },
+        });
+
+        // Assert: Transitions to ERROR state (allows retry from start)
+        expect(result.nextState).toBe(FSMState.ERROR);
+      });
+
+      it('should log timeout error with correlation ID for observability', async () => {
+        // Arrange
+        const timeoutError = new Error('timeout of 15000ms exceeded');
+        (timeoutError as any).code = 'ECONNABORTED';
+        vi.mocked(axios.get).mockRejectedValue(timeoutError);
+
+        // Act
+        await routingSuggestionHandler({
+          ...mockContext,
+          correlationId: 'test-timeout-correlation',
+          currentState: FSMState.AWAITING_JOURNEY_TIME,
+          messageBody: '10:00',
+          stateData: {
+            journeyId: 'journey-456',
+            origin: 'PAD',
+            destination: 'CDF',
+            travelDate: '2024-12-20',
+            departureTime: '10:00',
+          },
+        });
+
+        // Assert: Winston logger called with error and correlation ID
+        expect(sharedLogger.error).toHaveBeenCalledWith(
+          expect.stringContaining('journey-matcher'),
+          expect.objectContaining({
+            correlationId: 'test-timeout-correlation',
+            error: expect.stringContaining('ECONNABORTED'),
+          })
+        );
+      });
+    });
   });
 
   describe('AC-3: Alternative Routing Handler (Up to 3 Alternatives)', () => {

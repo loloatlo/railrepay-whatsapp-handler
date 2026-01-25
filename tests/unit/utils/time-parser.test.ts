@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseTime, TimeParseResult } from '../../../src/utils/time-parser';
+import { parseTime } from '../../../src/utils/time-parser';
 
 describe('Time Parser', () => {
   describe('24-hour format (HH:MM)', () => {

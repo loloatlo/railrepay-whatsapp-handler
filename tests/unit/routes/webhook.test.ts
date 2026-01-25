@@ -14,7 +14,7 @@
  * - Return TwiML response
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Express } from 'express';
 import request from 'supertest';
 import type Redis from 'ioredis';
@@ -480,6 +480,102 @@ describe('Webhook Route', () => {
 
       expect(response.status).toBe(200);
       // FSM getState should have been called
+    });
+  });
+
+  describe('TD-WHATSAPP-038: stateData in Handler Context', () => {
+    it('should pass stateData from FSM to handler context', async () => {
+      /**
+       * TD CONTEXT: webhook.ts retrieves FSM state via fsmService.getState() which returns { state, data }
+       * REQUIRED FIX: HandlerContext must include stateData property populated from currentState.data
+       *
+       * This test verifies the fix for TD-WHATSAPP-038 where handlers like routing-suggestion.handler
+       * need access to state data (journeyId, origin, destination, etc.) but it was never passed
+       */
+      // Import getHandler to check handler context
+      const { getHandler } = await import('../../../src/handlers/index.js');
+      const mockHandler = vi.fn().mockResolvedValue({
+        response: 'Test response',
+        nextState: undefined,
+      });
+      (getHandler as any).mockReturnValue(mockHandler);
+
+      // Import FsmService to mock getState return value
+      const { FsmService } = await import('../../../src/services/fsm.service.js');
+      const mockGetState = vi.fn().mockResolvedValue({
+        state: 'AWAITING_ROUTING_CONFIRM',
+        data: {
+          journeyId: 'journey-abc123',
+          origin: 'PAD',
+          destination: 'CDF',
+          travelDate: '2024-12-20',
+          departureTime: '10:00',
+        },
+      });
+      vi.spyOn(FsmService.prototype, 'getState').mockImplementation(mockGetState);
+
+      await request(app)
+        .post('/webhook/twilio')
+        .type('form')
+        .send({
+          MessageSid: 'SM_STATEDATA_TEST',
+          From: 'whatsapp:+447700900123',
+          To: 'whatsapp:+447700900000',
+          Body: 'YES',
+          NumMedia: '0',
+        });
+
+      // Verify handler received stateData in context
+      expect(mockHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          phoneNumber: '+447700900123',
+          messageBody: 'YES',
+          currentState: 'AWAITING_ROUTING_CONFIRM',
+          stateData: {
+            journeyId: 'journey-abc123',
+            origin: 'PAD',
+            destination: 'CDF',
+            travelDate: '2024-12-20',
+            departureTime: '10:00',
+          },
+        }),
+        expect.anything()
+      );
+    });
+
+    it('should pass empty object for stateData when FSM returns no data', async () => {
+      const { getHandler } = await import('../../../src/handlers/index.js');
+      const mockHandler = vi.fn().mockResolvedValue({
+        response: 'Test response',
+        nextState: undefined,
+      });
+      (getHandler as any).mockReturnValue(mockHandler);
+
+      const { FsmService } = await import('../../../src/services/fsm.service.js');
+      const mockGetState = vi.fn().mockResolvedValue({
+        state: 'START',
+        data: {}, // No data for START state
+      });
+      vi.spyOn(FsmService.prototype, 'getState').mockImplementation(mockGetState);
+
+      await request(app)
+        .post('/webhook/twilio')
+        .type('form')
+        .send({
+          MessageSid: 'SM_EMPTY_STATEDATA',
+          From: 'whatsapp:+447700900999',
+          To: 'whatsapp:+447700900000',
+          Body: 'Hello',
+          NumMedia: '0',
+        });
+
+      // Verify handler received empty stateData
+      expect(mockHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stateData: {},
+        }),
+        expect.anything()
+      );
     });
   });
 

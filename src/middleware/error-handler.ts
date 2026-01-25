@@ -51,7 +51,7 @@ function sanitizeErrorMessage(error: any, isDevelopment: boolean): string {
       .replace(/localhost:\d+/g, '[redacted]')
       .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, '[redacted]')
       .replace(/ECONNREFUSED/g, 'Connection failed')
-      .replace(/\/[\w\/\-\.]+/g, '[path]'); // Remove file paths
+      .replace(/\/[\w/-]+/g, '[path]'); // Remove file paths
 
     // If message contains technical details, use generic message
     if (sanitized.includes('[redacted]') || sanitized.includes('[path]')) {

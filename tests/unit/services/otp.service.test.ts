@@ -7,7 +7,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createHash } from 'crypto';
 
 describe('OTPService', () => {
   beforeEach(() => {
