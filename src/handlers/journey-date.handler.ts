@@ -37,6 +37,9 @@ Please try again with a valid date like:
   }
 
   // Valid date - store and move to next step
+  // Generate journeyId here so it's available for all subsequent handlers
+  const journeyId = crypto.randomUUID();
+
   return {
     response: `Got it! Journey date: ${result.date.toLocaleDateString('en-GB')}
 
@@ -48,7 +51,9 @@ For example:
 • "Brighton to Victoria"`,
     nextState: FSMState.AWAITING_JOURNEY_STATIONS,
     stateData: {
-      journeyDate: result.date.toISOString(),
+      ...ctx.stateData,
+      travelDate: result.date.toISOString().split('T')[0], // YYYY-MM-DD format for API
+      journeyId,
     },
   };
 }

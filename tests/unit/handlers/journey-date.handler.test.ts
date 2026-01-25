@@ -74,7 +74,8 @@ describe('Journey Date Handler', () => {
 
       // Assert
       expect(result.stateData).toBeDefined();
-      expect(result.stateData?.journeyDate).toBeDefined();
+      expect(result.stateData?.travelDate).toBeDefined(); // Field renamed from journeyDate
+      expect(result.stateData?.journeyId).toBeDefined();  // New: journeyId generated here
     });
 
     it('should accept date with month "15 Nov"', async () => {

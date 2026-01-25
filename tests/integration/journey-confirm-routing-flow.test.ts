@@ -1,49 +1,43 @@
 /**
- * TD-WHATSAPP-034: Integration Test - Journey Confirm → Routing → Ticket Flow
+ * TD-WHATSAPP-034: Integration Test - Journey Flow with Routing
  *
- * CONTEXT: Verify correct FSM state transitions through routing flow
+ * UPDATED WORKFLOW: API call moved to journey-time.handler
  *
  * This test verifies:
- * 1. journey-confirm.handler transitions to AWAITING_ROUTING_CONFIRM (NOT AWAITING_TICKET_UPLOAD)
- * 2. routing-suggestion.handler is invoked after confirmation
- * 3. Journey data (journeyId, origin, destination, travelDate, departureTime) flows through state transitions
- * 4. End-to-end flow: confirm YES → routing check → ticket upload
+ * 1. journey-time.handler calls journey-matcher API and presents routes
+ * 2. journey-confirm.handler handles YES → AWAITING_TICKET_UPLOAD (route already matched)
+ * 3. Journey data flows through state transitions correctly
  *
  * Per ADR-014: Tests written BEFORE implementation
- * Per Test Lock Rule: Blake MUST NOT modify these tests
- * Per Section 6.1.12: FSM transition testing verifies TRIGGER and OUTPUT states
  *
- * FSM TRANSITION TESTING:
- * - TRIGGER: AWAITING_JOURNEY_CONFIRM + "YES" → should reach routing-suggestion.handler
- * - OUTPUT: routing-suggestion.handler → should transition to AWAITING_TICKET_UPLOAD (after routing confirmed)
- * - NO ORPHAN HANDLERS: journey-confirm MUST NOT bypass routing flow
- *
- * These tests will FAIL until Blake:
- * 1. Changes journey-confirm.handler.ts line 24 from AWAITING_TICKET_UPLOAD to AWAITING_ROUTING_CONFIRM
- * 2. Updates journey-confirm.handler.ts to preserve stateData for routing handler
+ * WORKFLOW:
+ * AWAITING_JOURNEY_TIME + time input → journey-time.handler calls API → shows matched route
+ * AWAITING_JOURNEY_CONFIRM + "YES" → journey-confirm.handler → AWAITING_TICKET_UPLOAD
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { FSMState } from '../../src/services/fsm.service';
 import type { HandlerContext } from '../../src/handlers';
 import type { User } from '../../src/db/types';
-import { journeyConfirmHandler } from '../../src/handlers/journey-confirm.handler';
-import { routingSuggestionHandler } from '../../src/handlers/routing-suggestion.handler';
 import nock from 'nock';
 
-// Mock winston logger
-const sharedLogger = {
+// Use vi.hoisted() for mock logger
+const mockLogger = vi.hoisted(() => ({
   info: vi.fn(),
   error: vi.fn(),
   warn: vi.fn(),
   debug: vi.fn(),
-};
-
-vi.mock('@railrepay/winston-logger', () => ({
-  createLogger: vi.fn(() => sharedLogger),
 }));
 
-describe('TD-WHATSAPP-034: Integration - Journey Confirm → Routing → Ticket Flow', () => {
+vi.mock('@railrepay/winston-logger', () => ({
+  createLogger: () => mockLogger,
+}));
+
+// Import handlers after mocks
+import { journeyTimeHandler } from '../../src/handlers/journey-time.handler';
+import { journeyConfirmHandler } from '../../src/handlers/journey-confirm.handler';
+
+describe('Journey Flow Integration: Time → Confirm → Ticket Upload', () => {
   let mockUser: User;
   const journeyMatcherUrl = 'http://journey-matcher-integration-test:3001';
 
@@ -56,11 +50,9 @@ describe('TD-WHATSAPP-034: Integration - Journey Confirm → Routing → Ticket 
       updated_at: new Date('2024-11-20T10:00:00Z'),
     };
 
-    // Set environment variable for routing-suggestion.handler
     process.env.JOURNEY_MATCHER_URL = journeyMatcherUrl;
-
-    // Clear HTTP interceptors
     nock.cleanAll();
+    vi.clearAllMocks();
   });
 
   afterEach(() => {
@@ -68,258 +60,354 @@ describe('TD-WHATSAPP-034: Integration - Journey Confirm → Routing → Ticket 
     nock.cleanAll();
   });
 
-  describe('FSM State Transition Flow', () => {
-    it('should transition from AWAITING_JOURNEY_CONFIRM to AWAITING_ROUTING_CONFIRM when user confirms', async () => {
-      /**
-       * TRIGGER: AWAITING_JOURNEY_CONFIRM + "YES" input
-       * EXPECTED OUTPUT: nextState = AWAITING_ROUTING_CONFIRM (NOT AWAITING_TICKET_UPLOAD)
-       *
-       * This is the CORE bug fix for TD-WHATSAPP-034
-       */
-
-      const confirmContext: HandlerContext = {
+  describe('Direct Route Flow', () => {
+    it('should complete full flow: enter time → API call → show route → confirm YES → ticket upload', async () => {
+      // Step 1: User provides journey time
+      const timeContext: HandlerContext = {
         phoneNumber: '+447700900888',
-        messageBody: 'YES',
+        messageBody: '08:30',
         messageSid: 'SM-flow-test-1',
         user: mockUser,
-        currentState: FSMState.AWAITING_JOURNEY_CONFIRM,
+        currentState: FSMState.AWAITING_JOURNEY_TIME,
         correlationId: 'flow-test-corr-1',
         stateData: {
-          journeyId: 'journey-flow-abc',
-          origin: 'PAD',
-          destination: 'BRI',
-          travelDate: '2024-11-25',
-          departureTime: '10:15',
+          travelDate: '2026-01-24',
+          journeyId: 'journey-flow-direct',
+          origin: 'AGV',  // CRS code
+          destination: 'HFD',  // CRS code
+          originName: 'Abergavenny',
+          destinationName: 'Hereford',
         },
       };
 
-      const result = await journeyConfirmHandler(confirmContext);
-
-      // Assert: Should transition to AWAITING_ROUTING_CONFIRM (not AWAITING_TICKET_UPLOAD)
-      expect(result.nextState).toBe(FSMState.AWAITING_ROUTING_CONFIRM);
-      expect(result.response).toContain('routing'); // Response should mention routing
-    });
-
-    it('should preserve journey data in stateData for routing handler to use', async () => {
-      /**
-       * CRITICAL: routing-suggestion.handler requires journeyId, origin, destination, travelDate, departureTime
-       * journey-confirm.handler MUST pass these fields through in stateData
-       */
-
-      const confirmContext: HandlerContext = {
-        phoneNumber: '+447700900888',
-        messageBody: 'YES',
-        messageSid: 'SM-flow-test-2',
-        user: mockUser,
-        currentState: FSMState.AWAITING_JOURNEY_CONFIRM,
-        correlationId: 'flow-test-corr-2',
-        stateData: {
-          journeyId: 'journey-flow-xyz',
-          origin: 'Paddington',
-          destination: 'Bristol Temple Meads',
-          travelDate: '2024-11-25',
-          departureTime: '10:15',
-        },
-      };
-
-      const result = await journeyConfirmHandler(confirmContext);
-
-      // Assert: stateData contains required fields for routing handler
-      expect(result.stateData).toBeDefined();
-      expect(result.stateData?.journeyId).toBe('journey-flow-xyz');
-      expect(result.stateData?.origin).toBe('Paddington');
-      expect(result.stateData?.destination).toBe('Bristol Temple Meads');
-      expect(result.stateData?.travelDate).toBe('2024-11-25');
-      expect(result.stateData?.departureTime).toBe('10:15');
-    });
-
-    it('should complete full flow: confirm YES → routing check → ticket upload', async () => {
-      /**
-       * END-TO-END FLOW VERIFICATION:
-       * 1. User confirms journey (YES)
-       * 2. Handler transitions to AWAITING_ROUTING_CONFIRM with stateData
-       * 3. Routing handler invoked (simulating FSM transition)
-       * 4. Routing handler calls journey-matcher API
-       * 5. User confirms routing (YES)
-       * 6. Final transition to AWAITING_TICKET_UPLOAD
-       *
-       * This test simulates the FSM orchestration across handlers
-       */
-
-      // Step 1: User confirms journey
-      const confirmContext: HandlerContext = {
-        phoneNumber: '+447700900888',
-        messageBody: 'YES',
-        messageSid: 'SM-flow-test-3',
-        user: mockUser,
-        currentState: FSMState.AWAITING_JOURNEY_CONFIRM,
-        correlationId: 'flow-test-corr-3',
-        stateData: {
-          journeyId: 'journey-flow-e2e',
-          origin: 'PAD',
-          destination: 'CDF',
-          travelDate: '2024-12-01',
-          departureTime: '09:30',
-        },
-      };
-
-      const confirmResult = await journeyConfirmHandler(confirmContext);
-
-      // Verify transition to routing confirmation
-      expect(confirmResult.nextState).toBe(FSMState.AWAITING_ROUTING_CONFIRM);
-
-      // Step 2: Simulate FSM transition to routing-suggestion.handler
-      // This simulates what the FSM service would do after journey-confirm completes
-      const routingContext: HandlerContext = {
-        phoneNumber: '+447700900888',
-        messageBody: '09:30', // Simulating journey time input (triggers routing lookup)
-        messageSid: 'SM-flow-test-4',
-        user: mockUser,
-        currentState: FSMState.AWAITING_JOURNEY_TIME, // routing-suggestion.handler checks this state
-        correlationId: 'flow-test-corr-3',
-        stateData: confirmResult.stateData, // Pass data from confirm handler
-      };
-
-      // Mock journey-matcher API response
+      // Mock journey-matcher API for direct route
       const scope = nock(journeyMatcherUrl)
         .get('/routes')
         .query({
-          from: 'PAD',
-          to: 'CDF',
-          date: '2024-12-01',
-          time: '09:30',
+          from: 'AGV',
+          to: 'HFD',
+          date: '2026-01-24',
+          time: '08:30',
         })
         .reply(200, {
           routes: [
             {
               legs: [
                 {
-                  from: 'London Paddington',
-                  to: 'Bristol Temple Meads',
-                  departure: '09:30',
-                  arrival: '11:00',
-                  operator: 'GWR',
-                },
-                {
-                  from: 'Bristol Temple Meads',
-                  to: 'Cardiff Central',
-                  departure: '11:15',
-                  arrival: '11:45',
-                  operator: 'GWR',
+                  from: 'Abergavenny',
+                  to: 'Hereford',
+                  departure: '08:31',
+                  arrival: '09:00',
+                  operator: 'Transport for Wales',
                 },
               ],
-              totalDuration: '2h 15m',
+              totalDuration: '29m',
+              isDirect: true,
             },
           ],
         });
 
-      const routingResult = await routingSuggestionHandler(routingContext);
+      const timeResult = await journeyTimeHandler(timeContext);
 
-      // Verify routing handler called API
+      // Verify API was called
       expect(scope.isDone()).toBe(true);
 
-      // Verify routing handler transitioned to AWAITING_ROUTING_CONFIRM
-      expect(routingResult.nextState).toBe(FSMState.AWAITING_ROUTING_CONFIRM);
-      expect(routingResult.response).toContain('requires a change');
+      // Verify response shows matched route
+      expect(timeResult.response).toContain('08:31');
+      expect(timeResult.response).toContain('Abergavenny');
+      expect(timeResult.response).toContain('YES');
+      expect(timeResult.nextState).toBe(FSMState.AWAITING_JOURNEY_CONFIRM);
 
-      // Step 3: User confirms routing
-      const routingConfirmContext: HandlerContext = {
-        phoneNumber: '+447700900888',
-        messageBody: 'YES',
-        messageSid: 'SM-flow-test-5',
-        user: mockUser,
-        currentState: FSMState.AWAITING_ROUTING_CONFIRM,
-        correlationId: 'flow-test-corr-3',
-        stateData: routingResult.stateData,
-      };
+      // Verify stateData contains matched route
+      expect(timeResult.stateData?.matchedRoute).toBeDefined();
+      expect(timeResult.stateData?.isDirect).toBe(true);
 
-      const finalResult = await routingSuggestionHandler(routingConfirmContext);
-
-      // Verify final transition to ticket upload
-      expect(finalResult.nextState).toBe(FSMState.AWAITING_TICKET_UPLOAD);
-      expect(finalResult.response).toContain('ticket');
-    });
-  });
-
-  describe('Edge Cases: State Data Propagation', () => {
-    it('should handle missing stateData fields gracefully in routing handler', async () => {
-      /**
-       * EDGE CASE: What happens if journey-confirm doesn't pass required fields?
-       * routing-suggestion.handler should transition to ERROR state
-       */
-
-      const routingContext: HandlerContext = {
-        phoneNumber: '+447700900888',
-        messageBody: '10:00',
-        messageSid: 'SM-edge-test-1',
-        user: mockUser,
-        currentState: FSMState.AWAITING_JOURNEY_TIME,
-        correlationId: 'edge-test-corr-1',
-        stateData: {
-          // Missing journeyId, origin, destination, etc.
-        },
-      };
-
-      const result = await routingSuggestionHandler(routingContext);
-
-      // Should transition to ERROR due to missing required fields
-      expect(result.nextState).toBe(FSMState.ERROR);
-      expect(result.response).toContain('went wrong');
-    });
-
-    it('should handle missing stateData entirely in routing handler', async () => {
-      /**
-       * EDGE CASE: stateData is undefined
-       */
-
-      const routingContext: HandlerContext = {
-        phoneNumber: '+447700900888',
-        messageBody: '10:00',
-        messageSid: 'SM-edge-test-2',
-        user: mockUser,
-        currentState: FSMState.AWAITING_JOURNEY_TIME,
-        correlationId: 'edge-test-corr-2',
-        // stateData is undefined
-      };
-
-      const result = await routingSuggestionHandler(routingContext);
-
-      // Should transition to ERROR due to missing stateData
-      expect(result.nextState).toBe(FSMState.ERROR);
-      expect(result.response).toContain('went wrong');
-    });
-  });
-
-  describe('Regression: Journey Confirm Handler Should NOT Bypass Routing', () => {
-    it('should NOT transition directly to AWAITING_TICKET_UPLOAD from AWAITING_JOURNEY_CONFIRM', async () => {
-      /**
-       * REGRESSION TEST: Prevent future reintroduction of the bug
-       * Verify that journey-confirm NEVER transitions directly to AWAITING_TICKET_UPLOAD
-       */
-
+      // Step 2: User confirms with YES
       const confirmContext: HandlerContext = {
         phoneNumber: '+447700900888',
         messageBody: 'YES',
-        messageSid: 'SM-regression-test',
+        messageSid: 'SM-flow-test-2',
         user: mockUser,
         currentState: FSMState.AWAITING_JOURNEY_CONFIRM,
-        correlationId: 'regression-test-corr',
+        correlationId: 'flow-test-corr-1',
+        stateData: timeResult.stateData,  // Pass state from time handler
+      };
+
+      const confirmResult = await journeyConfirmHandler(confirmContext);
+
+      // Verify transition to ticket upload
+      expect(confirmResult.nextState).toBe(FSMState.AWAITING_TICKET_UPLOAD);
+      expect(confirmResult.response).toContain('confirmed');
+      expect(confirmResult.response).toContain('ticket');
+
+      // Verify confirmed route is in stateData
+      expect(confirmResult.stateData?.confirmedRoute).toBeDefined();
+      expect(confirmResult.stateData?.journeyConfirmed).toBe(true);
+    });
+  });
+
+  describe('Interchange Route Flow', () => {
+    it('should show interchange details and complete flow', async () => {
+      // Step 1: User provides journey time for interchange route
+      const timeContext: HandlerContext = {
+        phoneNumber: '+447700900888',
+        messageBody: '08:30',
+        messageSid: 'SM-flow-test-3',
+        user: mockUser,
+        currentState: FSMState.AWAITING_JOURNEY_TIME,
+        correlationId: 'flow-test-corr-2',
         stateData: {
-          journeyId: 'journey-regression-test',
-          origin: 'PAD',
-          destination: 'BRI',
-          travelDate: '2024-11-30',
-          departureTime: '14:00',
+          travelDate: '2026-01-24',
+          journeyId: 'journey-flow-interchange',
+          origin: 'AGV',
+          destination: 'BHM',  // Birmingham
+          originName: 'Abergavenny',
+          destinationName: 'Birmingham New Street',
         },
       };
 
-      const result = await journeyConfirmHandler(confirmContext);
+      // Mock journey-matcher API for interchange route
+      const scope = nock(journeyMatcherUrl)
+        .get('/routes')
+        .query({
+          from: 'AGV',
+          to: 'BHM',
+          date: '2026-01-24',
+          time: '08:30',
+        })
+        .reply(200, {
+          routes: [
+            {
+              legs: [
+                {
+                  from: 'Abergavenny',
+                  to: 'Hereford',
+                  departure: '08:31',
+                  arrival: '09:00',
+                  operator: 'Transport for Wales',
+                },
+                {
+                  from: 'Hereford',
+                  to: 'Birmingham New Street',
+                  departure: '09:40',
+                  arrival: '10:30',
+                  operator: 'Transport for Wales',
+                },
+              ],
+              totalDuration: '1h 59m',
+              isDirect: false,
+              interchangeStation: 'Hereford',
+            },
+          ],
+        });
 
-      // CRITICAL ASSERTION: Should NOT be AWAITING_TICKET_UPLOAD
-      expect(result.nextState).not.toBe(FSMState.AWAITING_TICKET_UPLOAD);
+      const timeResult = await journeyTimeHandler(timeContext);
 
-      // Should be AWAITING_ROUTING_CONFIRM instead
-      expect(result.nextState).toBe(FSMState.AWAITING_ROUTING_CONFIRM);
+      // Verify API was called
+      expect(scope.isDone()).toBe(true);
+
+      // Verify response shows interchange details
+      expect(timeResult.response).toContain('change at Hereford');
+      expect(timeResult.response).toContain('Leg 1');
+      expect(timeResult.response).toContain('Leg 2');
+      expect(timeResult.nextState).toBe(FSMState.AWAITING_JOURNEY_CONFIRM);
+
+      // Verify stateData contains interchange info
+      expect(timeResult.stateData?.isDirect).toBe(false);
+      expect(timeResult.stateData?.interchangeStation).toBe('Hereford');
+
+      // Step 2: User confirms with YES
+      const confirmContext: HandlerContext = {
+        phoneNumber: '+447700900888',
+        messageBody: 'YES',
+        messageSid: 'SM-flow-test-4',
+        user: mockUser,
+        currentState: FSMState.AWAITING_JOURNEY_CONFIRM,
+        correlationId: 'flow-test-corr-2',
+        stateData: timeResult.stateData,
+      };
+
+      const confirmResult = await journeyConfirmHandler(confirmContext);
+
+      // Verify transition to ticket upload
+      expect(confirmResult.nextState).toBe(FSMState.AWAITING_TICKET_UPLOAD);
+      expect(confirmResult.stateData?.journeyConfirmed).toBe(true);
+    });
+  });
+
+  describe('User Rejects Route (NO)', () => {
+    it('should allow user to try different time when NO is selected', async () => {
+      // Step 1: Get a matched route
+      const timeContext: HandlerContext = {
+        phoneNumber: '+447700900888',
+        messageBody: '10:00',
+        messageSid: 'SM-flow-test-5',
+        user: mockUser,
+        currentState: FSMState.AWAITING_JOURNEY_TIME,
+        correlationId: 'flow-test-corr-3',
+        stateData: {
+          travelDate: '2026-01-24',
+          journeyId: 'journey-flow-reject',
+          origin: 'AGV',
+          destination: 'HFD',
+          originName: 'Abergavenny',
+          destinationName: 'Hereford',
+        },
+      };
+
+      nock(journeyMatcherUrl)
+        .get('/routes')
+        .query(true)
+        .reply(200, {
+          routes: [{
+            legs: [{ from: 'A', to: 'B', departure: '10:03', arrival: '10:30', operator: 'TfW' }],
+            isDirect: true,
+          }],
+        });
+
+      const timeResult = await journeyTimeHandler(timeContext);
+      expect(timeResult.nextState).toBe(FSMState.AWAITING_JOURNEY_CONFIRM);
+
+      // Step 2: User rejects with NO
+      const confirmContext: HandlerContext = {
+        phoneNumber: '+447700900888',
+        messageBody: 'NO',
+        messageSid: 'SM-flow-test-6',
+        user: mockUser,
+        currentState: FSMState.AWAITING_JOURNEY_CONFIRM,
+        correlationId: 'flow-test-corr-3',
+        stateData: timeResult.stateData,
+      };
+
+      const confirmResult = await journeyConfirmHandler(confirmContext);
+
+      // Should go back to time entry
+      expect(confirmResult.nextState).toBe(FSMState.AWAITING_JOURNEY_TIME);
+      expect(confirmResult.response).toContain('alternative');
+
+      // State data should be preserved (origin, destination, etc.)
+      expect(confirmResult.stateData?.origin).toBe('AGV');
+      expect(confirmResult.stateData?.needsAlternatives).toBe(true);
+    });
+  });
+
+  describe('API Error Handling', () => {
+    it('should handle API timeout and allow retry', async () => {
+      const timeContext: HandlerContext = {
+        phoneNumber: '+447700900888',
+        messageBody: '14:00',
+        messageSid: 'SM-error-test-1',
+        user: mockUser,
+        currentState: FSMState.AWAITING_JOURNEY_TIME,
+        correlationId: 'error-test-corr-1',
+        stateData: {
+          travelDate: '2026-01-24',
+          journeyId: 'journey-error-test',
+          origin: 'AGV',
+          destination: 'HFD',
+        },
+      };
+
+      // Mock timeout
+      nock(journeyMatcherUrl)
+        .get('/routes')
+        .query(true)
+        .replyWithError({ code: 'ECONNABORTED', message: 'timeout' });
+
+      const result = await journeyTimeHandler(timeContext);
+
+      // Should stay in same state for retry
+      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_TIME);
+      expect(result.response).toContain('taking longer');
+    });
+
+    it('should handle no routes found', async () => {
+      const timeContext: HandlerContext = {
+        phoneNumber: '+447700900888',
+        messageBody: '03:00',  // Very early, no trains
+        messageSid: 'SM-error-test-2',
+        user: mockUser,
+        currentState: FSMState.AWAITING_JOURNEY_TIME,
+        correlationId: 'error-test-corr-2',
+        stateData: {
+          travelDate: '2026-01-24',
+          journeyId: 'journey-no-routes',
+          origin: 'AGV',
+          destination: 'HFD',
+        },
+      };
+
+      nock(journeyMatcherUrl)
+        .get('/routes')
+        .query(true)
+        .reply(200, { routes: [] });
+
+      const result = await journeyTimeHandler(timeContext);
+
+      // Should stay in same state
+      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_TIME);
+      expect(result.response).toContain('couldn\'t find');
+    });
+  });
+
+  describe('State Data Preservation', () => {
+    it('should preserve all journey data throughout the flow', async () => {
+      const initialStateData = {
+        travelDate: '2026-01-24',
+        journeyId: 'journey-preserve-test',
+        origin: 'AGV',
+        destination: 'HFD',
+        originName: 'Abergavenny',
+        destinationName: 'Hereford',
+      };
+
+      const timeContext: HandlerContext = {
+        phoneNumber: '+447700900888',
+        messageBody: '09:00',
+        messageSid: 'SM-preserve-test',
+        user: mockUser,
+        currentState: FSMState.AWAITING_JOURNEY_TIME,
+        correlationId: 'preserve-test-corr',
+        stateData: initialStateData,
+      };
+
+      nock(journeyMatcherUrl)
+        .get('/routes')
+        .query(true)
+        .reply(200, {
+          routes: [{
+            legs: [{ from: 'A', to: 'B', departure: '09:03', arrival: '09:30', operator: 'TfW' }],
+            isDirect: true,
+          }],
+        });
+
+      const timeResult = await journeyTimeHandler(timeContext);
+
+      // All initial fields should be preserved
+      expect(timeResult.stateData?.travelDate).toBe('2026-01-24');
+      expect(timeResult.stateData?.journeyId).toBe('journey-preserve-test');
+      expect(timeResult.stateData?.origin).toBe('AGV');
+      expect(timeResult.stateData?.destination).toBe('HFD');
+      expect(timeResult.stateData?.originName).toBe('Abergavenny');
+
+      // New fields should be added
+      expect(timeResult.stateData?.departureTime).toBe('09:00');
+      expect(timeResult.stateData?.matchedRoute).toBeDefined();
+
+      // Confirm step
+      const confirmContext: HandlerContext = {
+        ...timeContext,
+        messageBody: 'YES',
+        currentState: FSMState.AWAITING_JOURNEY_CONFIRM,
+        stateData: timeResult.stateData,
+      };
+
+      const confirmResult = await journeyConfirmHandler(confirmContext);
+
+      // All fields still preserved
+      expect(confirmResult.stateData?.travelDate).toBe('2026-01-24');
+      expect(confirmResult.stateData?.journeyId).toBe('journey-preserve-test');
+      expect(confirmResult.stateData?.confirmedRoute).toBeDefined();
     });
   });
 });

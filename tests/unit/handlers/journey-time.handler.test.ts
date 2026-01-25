@@ -3,19 +3,41 @@
  *
  * SPEC: Day 5 § 2.7 Journey Time Handler
  * Per ADR-014: These tests define the behavior
+ *
+ * Now includes journey-matcher API call to find real routes
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
-import { journeyTimeHandler } from '../../../src/handlers/journey-time.handler';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { FSMState } from '../../../src/services/fsm.service';
 import type { HandlerContext } from '../../../src/handlers';
 import type { User } from '../../../src/db/types';
+import axios from 'axios';
+
+// Mock axios
+vi.mock('axios');
+const mockedAxios = vi.mocked(axios, true);
+
+// Mock winston logger
+vi.mock('@railrepay/winston-logger', () => ({
+  createLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
+}));
+
+// Import handler after mocks
+import { journeyTimeHandler } from '../../../src/handlers/journey-time.handler';
 
 describe('Journey Time Handler', () => {
   let mockContext: HandlerContext;
   let mockUser: User;
 
   beforeEach(() => {
+    // Set required environment variable
+    process.env.JOURNEY_MATCHER_URL = 'http://journey-matcher:8080';
+
     mockUser = {
       id: 'user-123',
       phone_number: '+447700900123',
@@ -31,40 +53,241 @@ describe('Journey Time Handler', () => {
       user: mockUser,
       currentState: FSMState.AWAITING_JOURNEY_TIME,
       correlationId: 'test-corr-id',
+      stateData: {
+        travelDate: '2026-01-24',
+        journeyId: 'test-journey-123',
+        origin: 'AGV',
+        destination: 'HFD',
+        originName: 'Abergavenny',
+        destinationName: 'Hereford',
+      },
     };
+
+    // Reset mocks
+    vi.clearAllMocks();
   });
 
-  describe('Valid times', () => {
-    it('should accept 24-hour format "14:30"', async () => {
+  afterEach(() => {
+    delete process.env.JOURNEY_MATCHER_URL;
+  });
+
+  describe('Valid times with API call', () => {
+    it('should accept 24-hour format "14:30" and call journey-matcher', async () => {
+      // Mock direct route response
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          routes: [
+            {
+              legs: [
+                {
+                  from: 'Abergavenny',
+                  to: 'Hereford',
+                  departure: '14:31',
+                  arrival: '15:00',
+                  operator: 'Transport for Wales',
+                },
+              ],
+              totalDuration: '29m',
+              isDirect: true,
+            },
+          ],
+        },
+      });
+
       mockContext.messageBody = '14:30';
       const result = await journeyTimeHandler(mockContext);
-      expect(result.response).toContain('confirm');
+
+      expect(result.response).toContain('14:31');
+      expect(result.response).toContain('Abergavenny');
+      expect(result.response).toContain('YES');
       expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_CONFIRM);
+      expect(mockedAxios.get).toHaveBeenCalledWith(
+        'http://journey-matcher:8080/routes',
+        expect.objectContaining({
+          params: {
+            from: 'AGV',
+            to: 'HFD',
+            date: '2026-01-24',
+            time: '14:30',
+          },
+        })
+      );
     });
 
     it('should accept 12-hour format "2:30pm"', async () => {
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          routes: [
+            {
+              legs: [{ from: 'A', to: 'B', departure: '14:31', arrival: '15:00', operator: 'TfW' }],
+              totalDuration: '29m',
+              isDirect: true,
+            },
+          ],
+        },
+      });
+
       mockContext.messageBody = '2:30pm';
       const result = await journeyTimeHandler(mockContext);
       expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_CONFIRM);
     });
 
     it('should accept compact format "1430"', async () => {
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          routes: [
+            {
+              legs: [{ from: 'A', to: 'B', departure: '14:31', arrival: '15:00', operator: 'TfW' }],
+              totalDuration: '29m',
+              isDirect: true,
+            },
+          ],
+        },
+      });
+
       mockContext.messageBody = '1430';
       const result = await journeyTimeHandler(mockContext);
       expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_CONFIRM);
     });
 
-    it('should store journey time in state data', async () => {
+    it('should store departureTime and matchedRoute in state data', async () => {
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          routes: [
+            {
+              legs: [{ from: 'A', to: 'B', departure: '14:31', arrival: '15:00', operator: 'TfW' }],
+              totalDuration: '29m',
+              isDirect: true,
+            },
+          ],
+        },
+      });
+
       mockContext.messageBody = '14:30';
       const result = await journeyTimeHandler(mockContext);
+
       expect(result.stateData).toBeDefined();
-      expect(result.stateData?.journeyTime).toBeDefined();
+      expect(result.stateData?.departureTime).toBe('14:30');
+      expect(result.stateData?.matchedRoute).toBeDefined();
+      expect(result.stateData?.isDirect).toBe(true);
     });
 
-    it('should show journey confirmation details', async () => {
+    it('should preserve previous stateData fields', async () => {
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          routes: [
+            {
+              legs: [{ from: 'A', to: 'B', departure: '14:31', arrival: '15:00', operator: 'TfW' }],
+              isDirect: true,
+            },
+          ],
+        },
+      });
+
       mockContext.messageBody = '14:30';
       const result = await journeyTimeHandler(mockContext);
-      expect(result.response).toContain('14:30');
+
+      expect(result.stateData?.travelDate).toBe('2026-01-24');
+      expect(result.stateData?.journeyId).toBe('test-journey-123');
+      expect(result.stateData?.origin).toBe('AGV');
+    });
+  });
+
+  describe('Interchange routes', () => {
+    it('should handle interchange route with multiple legs', async () => {
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          routes: [
+            {
+              legs: [
+                { from: 'Abergavenny', to: 'Hereford', departure: '08:31', arrival: '09:00', operator: 'TfW' },
+                { from: 'Hereford', to: 'Birmingham', departure: '09:40', arrival: '10:30', operator: 'TfW' },
+              ],
+              totalDuration: '1h 59m',
+              isDirect: false,
+              interchangeStation: 'Hereford',
+            },
+          ],
+        },
+      });
+
+      mockContext.messageBody = '08:30';
+      mockContext.stateData = {
+        ...mockContext.stateData,
+        destination: 'BHM',
+        destinationName: 'Birmingham New Street',
+      };
+
+      const result = await journeyTimeHandler(mockContext);
+
+      expect(result.response).toContain('change at Hereford');
+      expect(result.response).toContain('Leg 1');
+      expect(result.response).toContain('Leg 2');
+      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_CONFIRM);
+      expect(result.stateData?.isDirect).toBe(false);
+      expect(result.stateData?.interchangeStation).toBe('Hereford');
+    });
+  });
+
+  describe('API error handling', () => {
+    it('should return error when no routes found', async () => {
+      mockedAxios.get.mockResolvedValueOnce({
+        data: { routes: [] },
+      });
+
+      mockContext.messageBody = '14:30';
+      const result = await journeyTimeHandler(mockContext);
+
+      expect(result.response).toContain('couldn\'t find any trains');
+      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_TIME);
+    });
+
+    it('should handle API timeout gracefully', async () => {
+      mockedAxios.get.mockRejectedValueOnce({
+        code: 'ECONNABORTED',
+        message: 'timeout of 30000ms exceeded',
+      });
+
+      mockContext.messageBody = '14:30';
+      const result = await journeyTimeHandler(mockContext);
+
+      expect(result.response).toContain('taking longer than expected');
+      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_TIME);
+    });
+
+    it('should handle 404 response', async () => {
+      mockedAxios.get.mockRejectedValueOnce({
+        response: { status: 404 },
+        message: 'Not found',
+      });
+
+      mockContext.messageBody = '14:30';
+      const result = await journeyTimeHandler(mockContext);
+
+      expect(result.response).toContain('couldn\'t find any trains');
+      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_TIME);
+    });
+  });
+
+  describe('Missing stateData', () => {
+    it('should return error when origin missing', async () => {
+      mockContext.stateData = { travelDate: '2026-01-24', journeyId: 'test' };
+      mockContext.messageBody = '14:30';
+
+      const result = await journeyTimeHandler(mockContext);
+
+      expect(result.response).toContain('start again');
+      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_DATE);
+    });
+
+    it('should return error when JOURNEY_MATCHER_URL not configured', async () => {
+      delete process.env.JOURNEY_MATCHER_URL;
+      mockContext.messageBody = '14:30';
+
+      const result = await journeyTimeHandler(mockContext);
+
+      expect(result.response).toContain('Something went wrong');
+      expect(result.nextState).toBe(FSMState.ERROR);
     });
   });
 
