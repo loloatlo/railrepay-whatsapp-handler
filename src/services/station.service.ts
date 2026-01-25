@@ -1,55 +1,56 @@
 /**
  * Station Service - Search for railway stations
  *
- * SPEC: Day 5 § 3. Station Service
- * Per ADR-014: Implementation written AFTER tests
+ * TEMPORARY: Direct database query to timetable_loader.stations
+ * See TD-WHATSAPP-045: Create dedicated station-finder service
  *
- * Calls timetable-loader service to search for stations
+ * This violates service boundaries but unblocks the user flow.
+ * The proper solution is a dedicated station-finder service with its own API.
  */
 
+import { getPool } from '../db/pool.js';
 import { getLogger } from '../lib/logger.js';
 
 const logger = getLogger();
 
 export interface Station {
-  crs: string; // 3-letter station code (e.g., "KGX" for Kings Cross)
+  crs: string; // 3-letter station code (e.g., "AGV" for Abergavenny)
   name: string; // Full station name
 }
 
-const TIMETABLE_LOADER_URL = process.env.TIMETABLE_LOADER_URL || 'http://localhost:3001';
-
 /**
- * Search for stations by name
+ * Search for stations by name or CRS code
+ * Queries timetable_loader.stations table directly
  *
- * @param query - Search query (station name or partial name)
- * @returns Array of matching stations (empty if none found or error)
+ * @param query - Search query (station name or CRS code)
+ * @returns Array of matching stations (empty if none found)
  */
 export async function searchStations(query: string): Promise<Station[]> {
+  if (!query || query.length < 2) {
+    return [];
+  }
+
   try {
-    const url = `${TIMETABLE_LOADER_URL}/api/v1/stations/search?q=${encodeURIComponent(query)}`;
+    const pool = getPool();
 
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+    const result = await pool.query(
+      `SELECT crs_code as crs, name
+       FROM timetable_loader.stations
+       WHERE LOWER(name) LIKE LOWER($1)
+          OR UPPER(crs_code) = UPPER($2)
+       ORDER BY
+         CASE WHEN UPPER(crs_code) = UPPER($2) THEN 0 ELSE 1 END,
+         name
+       LIMIT 10`,
+      [`%${query}%`, query]
+    );
 
-    if (!response.ok) {
-      logger.error('Station search failed', {
-        component: 'whatsapp-handler/station-service',
-        status: response.status,
-        url,
-      });
-      return [];
-    }
-
-    const data = await response.json() as Station[];
-    return data;
+    return result.rows;
   } catch (error) {
     logger.error('Station search error', {
       component: 'whatsapp-handler/station-service',
       error: error instanceof Error ? error.message : 'Unknown error',
+      query,
     });
     return [];
   }

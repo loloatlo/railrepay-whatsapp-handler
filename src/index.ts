@@ -15,6 +15,7 @@ import Redis from 'ioredis';
 import { MetricsPusher } from '@railrepay/metrics-pusher';
 import { getConfig } from './config/index.js';
 import { createDatabaseClientFromEnv } from './db/client.js';
+import { setPool } from './db/pool.js';
 import { createWebhookRouter } from './routes/webhook.js';
 import { createHealthRouter } from './routes/health.js';
 import { createMetricsRouter, initializeMetrics } from './routes/metrics.js';
@@ -60,6 +61,7 @@ try {
   dbClient = createDatabaseClientFromEnv();
   await dbClient.initialize();
   dbPool = dbClient.getPool();
+  setPool(dbPool); // Make pool available to services via getPool()
   console.log('[whatsapp-handler] Database client initialized');
 
   // Initialize Redis client (ioredis for all Redis operations)

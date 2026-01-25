@@ -1,150 +1,160 @@
 /**
- * Station Service Tests - Written FIRST per ADR-014 (TDD)
+ * Station Service Tests
  *
- * SPEC: Day 5 § 3. Station Service
- * Per ADR-014: These tests define the behavior
+ * Tests for direct database query implementation
+ * See TD-WHATSAPP-045: Create dedicated station-finder service
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { searchStations } from '../../../src/services/station.service';
+import { searchStations } from '../../../src/services/station.service.js';
 
-// Mock fetch globally
-global.fetch = vi.fn();
+// Mock the database pool
+const mockQuery = vi.fn();
+vi.mock('../../../src/db/pool.js', () => ({
+  getPool: () => ({ query: mockQuery }),
+}));
+
+// Mock the logger
+vi.mock('../../../src/lib/logger.js', () => ({
+  getLogger: () => ({
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+  }),
+}));
 
 describe('Station Service', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('Successful searches', () => {
-    it('should return stations for valid query', async () => {
-      // Arrange
-      const mockResponse = [
-        { crs: 'KGX', name: 'London Kings Cross' },
-        { crs: 'EDB', name: 'Edinburgh' },
-      ];
-
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
+    it('should return stations matching query by name', async () => {
+      mockQuery.mockResolvedValue({
+        rows: [{ crs: 'AGV', name: 'Abergavenny' }],
       });
 
-      // Act
-      const result = await searchStations('Kings Cross');
+      const results = await searchStations('Abergavenny');
 
-      // Assert
-      expect(result).toHaveLength(2);
-      expect(result[0].crs).toBe('KGX');
-      expect(result[0].name).toBe('London Kings Cross');
-    });
-
-    it('should return empty array when no matches', async () => {
-      // Arrange
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => [],
-      });
-
-      // Act
-      const result = await searchStations('NonexistentStation');
-
-      // Assert
-      expect(result).toEqual([]);
-    });
-
-    it('should call timetable-loader API with correct URL', async () => {
-      // Arrange
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => [],
-      });
-
-      // Act
-      await searchStations('Manchester');
-
-      // Assert
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/stations/search?q=Manchester'),
-        expect.any(Object)
+      expect(results).toEqual([{ crs: 'AGV', name: 'Abergavenny' }]);
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('timetable_loader.stations'),
+        expect.arrayContaining(['%Abergavenny%', 'Abergavenny'])
       );
     });
 
-    it('should handle single match', async () => {
-      // Arrange
-      const mockResponse = [{ crs: 'MAN', name: 'Manchester Piccadilly' }];
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
+    it('should return station by CRS code', async () => {
+      mockQuery.mockResolvedValue({
+        rows: [{ crs: 'AGV', name: 'Abergavenny' }],
       });
 
-      // Act
-      const result = await searchStations('Manchester');
+      const results = await searchStations('AGV');
 
-      // Assert
-      expect(result).toHaveLength(1);
-      expect(result[0].crs).toBe('MAN');
+      expect(results).toHaveLength(1);
+      expect(results[0].crs).toBe('AGV');
     });
 
     it('should handle multiple matches', async () => {
-      // Arrange
-      const mockResponse = [
-        { crs: 'MAN', name: 'Manchester Piccadilly' },
-        { crs: 'MCV', name: 'Manchester Victoria' },
-        { crs: 'MCO', name: 'Manchester Oxford Road' },
-      ];
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
+      mockQuery.mockResolvedValue({
+        rows: [
+          { crs: 'MAN', name: 'Manchester Piccadilly' },
+          { crs: 'MCV', name: 'Manchester Victoria' },
+          { crs: 'MCO', name: 'Manchester Oxford Road' },
+        ],
       });
 
-      // Act
-      const result = await searchStations('Manchester');
+      const results = await searchStations('Manchester');
 
-      // Assert
-      expect(result).toHaveLength(3);
+      expect(results).toHaveLength(3);
+    });
+
+    it('should return empty array for no matches', async () => {
+      mockQuery.mockResolvedValue({ rows: [] });
+
+      const results = await searchStations('NonExistent');
+
+      expect(results).toEqual([]);
+    });
+  });
+
+  describe('Input validation', () => {
+    it('should return empty array for short query (less than 2 chars)', async () => {
+      const results = await searchStations('A');
+
+      expect(results).toEqual([]);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('should return empty array for empty query', async () => {
+      const results = await searchStations('');
+
+      expect(results).toEqual([]);
+      expect(mockQuery).not.toHaveBeenCalled();
     });
   });
 
   describe('Error handling', () => {
-    it('should return empty array on API error', async () => {
-      // Arrange
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-      });
+    it('should return empty array on database error', async () => {
+      mockQuery.mockRejectedValue(new Error('DB connection failed'));
 
-      // Act
-      const result = await searchStations('Kings Cross');
+      const results = await searchStations('Test');
 
-      // Assert
-      expect(result).toEqual([]);
+      expect(results).toEqual([]);
     });
 
-    it('should return empty array on network error', async () => {
-      // Arrange
-      (global.fetch as any).mockRejectedValueOnce(new Error('Network error'));
+    it('should return empty array on query timeout', async () => {
+      mockQuery.mockRejectedValue(new Error('Query timeout'));
 
-      // Act
-      const result = await searchStations('Kings Cross');
+      const results = await searchStations('Kings Cross');
 
-      // Assert
-      expect(result).toEqual([]);
+      expect(results).toEqual([]);
+    });
+  });
+
+  describe('Query structure', () => {
+    it('should query timetable_loader.stations table', async () => {
+      mockQuery.mockResolvedValue({ rows: [] });
+
+      await searchStations('London');
+
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('timetable_loader.stations'),
+        expect.any(Array)
+      );
     });
 
-    it('should return empty array on invalid JSON', async () => {
-      // Arrange
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => {
-          throw new Error('Invalid JSON');
-        },
-      });
+    it('should search by name using LIKE with wildcard', async () => {
+      mockQuery.mockResolvedValue({ rows: [] });
 
-      // Act
-      const result = await searchStations('Kings Cross');
+      await searchStations('Padding');
 
-      // Assert
-      expect(result).toEqual([]);
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('LIKE'),
+        expect.arrayContaining(['%Padding%'])
+      );
+    });
+
+    it('should also match by CRS code', async () => {
+      mockQuery.mockResolvedValue({ rows: [] });
+
+      await searchStations('PAD');
+
+      // Query should include both name search and CRS search
+      const callArgs = mockQuery.mock.calls[0];
+      expect(callArgs[0]).toContain('crs_code');
+      expect(callArgs[1]).toEqual(expect.arrayContaining(['PAD']));
+    });
+
+    it('should limit results to 10', async () => {
+      mockQuery.mockResolvedValue({ rows: [] });
+
+      await searchStations('Station');
+
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('LIMIT 10'),
+        expect.any(Array)
+      );
     });
   });
 });
