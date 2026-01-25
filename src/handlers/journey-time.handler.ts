@@ -12,6 +12,7 @@
 import type { HandlerContext, HandlerResult } from './index.js';
 import { FSMState } from '../services/fsm.service.js';
 import { parseTime } from '../utils/time-parser.js';
+import { getTocName } from '../utils/toc-names.js';
 import { createLogger } from '@railrepay/winston-logger';
 import axios from 'axios';
 
@@ -111,15 +112,17 @@ Please try again with a valid time like:
 
     if (isDirect) {
       // Direct journey - single segment
+      const tocName = getTocName(firstLeg.operator);
       logger.info('Direct route found', {
         correlationId: ctx.correlationId,
         journeyId,
         departure: firstLeg.departure,
         operator: firstLeg.operator,
+        tocName,
       });
 
       return {
-        response: `I found the ${firstLeg.departure} ${displayOrigin} → ${displayDestination} (${firstLeg.operator}).
+        response: `I found the ${firstLeg.departure} ${tocName} ${displayOrigin} → ${displayDestination} service.
 
 Is this the journey you took? Reply YES to confirm or NO to see alternatives.`,
         nextState: FSMState.AWAITING_JOURNEY_CONFIRM,

@@ -14,6 +14,7 @@
 
 import type { HandlerContext, HandlerResult } from './index.js';
 import { FSMState } from '../services/fsm.service.js';
+import { getTocName } from '../utils/toc-names.js';
 import { createLogger } from '@railrepay/winston-logger';
 import axios from 'axios';
 
@@ -111,7 +112,7 @@ export async function routingSuggestionHandler(ctx: HandlerContext): Promise<Han
       suggestedRoute.legs.forEach((leg: any, index: number) => {
         responseText += `\nLeg ${index + 1}: ${leg.from} → ${leg.to}\n`;
         responseText += `Departs: ${leg.departure}, Arrives: ${leg.arrival}\n`;
-        responseText += `Operator: ${leg.operator}\n`;
+        responseText += `Operator: ${getTocName(leg.operator)}\n`;
       });
 
       responseText += `\nTotal Duration: ${suggestedRoute.totalDuration}\n`;
