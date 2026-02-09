@@ -61,12 +61,10 @@ Now please upload a photo of your ticket.`,
       journeyId,
     });
 
-    // User rejected - offer alternatives or let them change the time
+    // User rejected - show alternative routes
     return {
-      response: `No problem! Let me find some alternative routes for you.
-
-What other time would you like to try? Or reply CANCEL to start over.`,
-      nextState: FSMState.AWAITING_JOURNEY_TIME,
+      response: `No problem! Let me find some alternative routes for you.`,
+      nextState: FSMState.AWAITING_ROUTING_ALTERNATIVE,
       stateData: {
         ...ctx.stateData,
         needsAlternatives: true,

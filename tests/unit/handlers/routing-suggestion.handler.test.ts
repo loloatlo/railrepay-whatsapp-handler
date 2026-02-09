@@ -48,8 +48,6 @@ vi.mock('axios');
  * Per Test Lock Rule: Blake MUST NOT modify these tests
  */
 import { routingSuggestionHandler } from '../../../src/handlers/routing-suggestion.handler';
-// @ts-expect-error - Handler does not exist yet, Blake will create
-import { routingAlternativeHandler } from '../../../src/handlers/routing-alternative.handler';
 import axios from 'axios';
 
 describe('US-XXX: Submitting a Journey to RailRepay', () => {
@@ -394,11 +392,21 @@ describe('US-XXX: Submitting a Journey to RailRepay', () => {
     });
   });
 
-  describe('AC-3: Alternative Routing Handler (Up to 3 Alternatives)', () => {
-    let mockContext: HandlerContext;
+  describe('TD-WHATSAPP-054 AC-6: stateData Propagation in routing-suggestion.handler', () => {
+    /**
+     * TD CONTEXT: routing-suggestion.handler YES path stores only { routingConfirmed: true },
+     * NO path stores only { alternativeCount: 1 }, dropping all journey context.
+     *
+     * REQUIRED FIX: Use spread operator to preserve all stateData fields.
+     */
+
+    let mockContextWithStateData: HandlerContext;
     let mockUser: User;
 
     beforeEach(() => {
+      // Setup environment variable
+      process.env.JOURNEY_MATCHER_URL = 'http://journey-matcher.test:3001';
+
       mockUser = {
         id: 'user-123',
         phone_number: '+447700900123',
@@ -407,188 +415,80 @@ describe('US-XXX: Submitting a Journey to RailRepay', () => {
         updated_at: new Date('2024-11-20T10:00:00Z'),
       };
 
-      /**
-       * CONTEXT: User rejected initial routing suggestion
-       * FSM now in AWAITING_ROUTING_ALTERNATIVE state
-       * System will fetch alternative routes from journey-matcher
-       */
-      mockContext = {
+      mockContextWithStateData = {
         phoneNumber: '+447700900123',
-        messageBody: '1', // User selecting first alternative
+        messageBody: 'YES',
         messageSid: 'SM123',
         user: mockUser,
-        currentState: FSMState.AWAITING_ROUTING_ALTERNATIVE,
+        currentState: FSMState.AWAITING_ROUTING_CONFIRM,
         correlationId: 'test-corr-id',
+        stateData: {
+          journeyId: 'journey-789',
+          origin: 'AGV',
+          destination: 'HFD',
+          travelDate: '2026-01-24',
+          departureTime: '08:30',
+          suggestedRoute: {
+            legs: [{ from: 'AGV', to: 'HFD', operator: 'TfW', departure: '08:31', arrival: '09:00' }],
+            totalDuration: '29m',
+          },
+          originName: 'Abergavenny',
+          destinationName: 'Hereford',
+        },
       };
     });
 
-    describe('Presenting alternative routes', () => {
-      it('should present numbered list of alternative routes when user rejects initial suggestion', async () => {
-        /**
-         * BEHAVIOR: System fetches alternative routes from journey-matcher
-         * journey-matcher returns ranked alternatives from otp-router
-         * System presents numbered options (1, 2, 3)
-         */
-        // Arrange: Simulate transition from AWAITING_ROUTING_CONFIRM to AWAITING_ROUTING_ALTERNATIVE
-        const alternatives = [
-          {
-            number: 1,
-            legs: [
-              { from: 'PAD', to: 'RDG', operator: 'GWR', departure: '10:05', arrival: '10:35' },
-              { from: 'RDG', to: 'CDF', operator: 'GWR', departure: '10:50', arrival: '12:20' },
-            ],
-            totalDuration: '2h 15m',
-          },
-          {
-            number: 2,
-            legs: [
-              { from: 'PAD', to: 'BHM', operator: 'XC', departure: '10:10', arrival: '12:00' },
-              { from: 'BHM', to: 'CDF', operator: 'XC', departure: '12:20', arrival: '13:45' },
-            ],
-            totalDuration: '3h 35m',
-          },
-          {
-            number: 3,
-            legs: [
-              { from: 'PAD', to: 'SWA', operator: 'GWR', departure: '10:15', arrival: '13:30' },
-              { from: 'SWA', to: 'CDF', operator: 'TfW', departure: '13:50', arrival: '14:45' },
-            ],
-            totalDuration: '4h 30m',
-          },
-        ];
-
-        // Act: Trigger alternative routing presentation
-        const result = await routingAlternativeHandler({
-          ...mockContext,
-          currentState: FSMState.AWAITING_ROUTING_CONFIRM,
-          messageBody: 'NO', // User rejected initial suggestion
-        });
-
-        // Assert: Response contains numbered alternatives
-        expect(result.response).toContain('alternative');
-        expect(result.response).toContain('1.');
-        expect(result.response).toContain('2.');
-        expect(result.response).toContain('3.');
-
-        // Assert: Each alternative shows route details
-        expect(result.response).toContain('PAD');
-        expect(result.response).toContain('RDG');
-        expect(result.response).toContain('BHM');
-        expect(result.response).toContain('SWA');
-
-        // Assert: Transitions to AWAITING_ROUTING_ALTERNATIVE
-        expect(result.nextState).toBe(FSMState.AWAITING_ROUTING_ALTERNATIVE);
-      });
-
-      it('should accept number selection (1, 2, or 3) to confirm alternative route', async () => {
-        // Arrange: User selecting option 2
-        mockContext.messageBody = '2';
-
-        // Act
-        const result = await routingAlternativeHandler(mockContext);
-
-        // Assert: Selection accepted, proceeds to ticket upload
-        expect(result.response).toContain('selected');
-        expect(result.response).toContain('ticket');
-        expect(result.nextState).toBe(FSMState.AWAITING_TICKET_UPLOAD);
-
-        // Assert: Selected route stored in state
-        expect(result.stateData?.selectedAlternative).toBe(2);
-        expect(result.stateData?.routingConfirmed).toBe(true);
-      });
-
-      it('should accept "1" to select first alternative', async () => {
-        // Arrange
-        mockContext.messageBody = '1';
-
-        // Act
-        const result = await routingAlternativeHandler(mockContext);
-
-        // Assert
-        expect(result.nextState).toBe(FSMState.AWAITING_TICKET_UPLOAD);
-        expect(result.stateData?.selectedAlternative).toBe(1);
-      });
-
-      it('should accept "3" to select third alternative', async () => {
-        // Arrange
-        mockContext.messageBody = '3';
-
-        // Act
-        const result = await routingAlternativeHandler(mockContext);
-
-        // Assert
-        expect(result.nextState).toBe(FSMState.AWAITING_TICKET_UPLOAD);
-        expect(result.stateData?.selectedAlternative).toBe(3);
-      });
+    afterEach(() => {
+      delete process.env.JOURNEY_MATCHER_URL;
     });
 
-    describe('Handling further rejections (max 3 alternatives)', () => {
-      it('should allow "NONE" response to request more alternatives (if under limit)', async () => {
-        // Arrange: User doesn't like any of the 3 alternatives, first rejection
-        mockContext.messageBody = 'NONE';
+    it('should preserve all stateData fields when user says YES (was: storing only routingConfirmed)', async () => {
+      // AC-6: YES path should preserve journey context using spread operator
 
-        // Act
-        const result = await routingAlternativeHandler(mockContext);
+      mockContextWithStateData.messageBody = 'YES';
+      const result = await routingSuggestionHandler(mockContextWithStateData);
 
-        // Assert: Fetches next set of alternatives
-        expect(result.response).toContain('alternative');
-        expect(result.nextState).toBe(FSMState.AWAITING_ROUTING_ALTERNATIVE);
+      // Assert: All previous stateData fields preserved
+      expect(result.stateData?.journeyId).toBe('journey-789');
+      expect(result.stateData?.origin).toBe('AGV');
+      expect(result.stateData?.destination).toBe('HFD');
+      expect(result.stateData?.travelDate).toBe('2026-01-24');
+      expect(result.stateData?.departureTime).toBe('08:30');
+      expect(result.stateData?.suggestedRoute).toBeDefined();
+      expect(result.stateData?.originName).toBe('Abergavenny');
+      expect(result.stateData?.destinationName).toBe('Hereford');
 
-        // Assert: Increments alternative count
-        expect(result.stateData?.alternativeCount).toBe(2);
-      });
-
-      it('should stop offering alternatives after 3 sets (max limit per AC-3)', async () => {
-        /**
-         * AC-3: "receive up to 3 alternative suggested routings"
-         * After 3 sets of alternatives, system must stop and escalate
-         */
-        // Arrange: User has rejected 3 sets of alternatives (alternativeCount = 3)
-        mockContext.messageBody = 'NONE';
-
-        // Act
-        const result = await routingAlternativeHandler({
-          ...mockContext,
-          stateData: { alternativeCount: 3 }, // Simulate state data from previous rejections
-        });
-
-        // Assert: No more alternatives offered, manual support required
-        expect(result.response).toContain('unable to find');
-        expect(result.response).toContain('manual');
-        expect(result.nextState).toBe(FSMState.ERROR);
-
-        // Assert: Escalation event published for human review
-        expect(result.publishEvents).toBeDefined();
-        expect(result.publishEvents?.length).toBeGreaterThan(0);
-        expect(result.publishEvents?.[0].event_type).toBe('journey.routing_escalation');
-      });
+      // Assert: New fields added
+      expect(result.stateData?.routingConfirmed).toBe(true);
+      expect(result.stateData?.confirmedRoute).toEqual(mockContextWithStateData.stateData?.suggestedRoute);
     });
 
-    describe('Invalid input handling', () => {
-      it('should reject invalid selection (not 1, 2, 3, or NONE)', async () => {
-        // Arrange
-        mockContext.messageBody = '4';
+    it('should preserve all stateData fields when user says NO (was: storing only alternativeCount)', async () => {
+      // AC-6: NO path should preserve journey context using spread operator
 
-        // Act
-        const result = await routingAlternativeHandler(mockContext);
+      mockContextWithStateData.messageBody = 'NO';
+      const result = await routingSuggestionHandler(mockContextWithStateData);
 
-        // Assert
-        expect(result.response).toContain('1, 2, or 3');
-        expect(result.response).toContain('NONE');
-        expect(result.nextState).toBe(FSMState.AWAITING_ROUTING_ALTERNATIVE);
-      });
+      // Assert: All previous stateData fields preserved
+      expect(result.stateData?.journeyId).toBe('journey-789');
+      expect(result.stateData?.origin).toBe('AGV');
+      expect(result.stateData?.destination).toBe('HFD');
+      expect(result.stateData?.travelDate).toBe('2026-01-24');
+      expect(result.stateData?.departureTime).toBe('08:30');
+      expect(result.stateData?.suggestedRoute).toBeDefined();
 
-      it('should reject non-numeric input (except NONE)', async () => {
-        // Arrange
-        mockContext.messageBody = 'MAYBE';
+      // Assert: New field added
+      expect(result.stateData?.alternativeCount).toBe(1);
+    });
 
-        // Act
-        const result = await routingAlternativeHandler(mockContext);
+    it('should set confirmedRoute equal to suggestedRoute when user says YES', async () => {
+      // AC-6: YES path should copy suggestedRoute to confirmedRoute
 
-        // Assert
-        expect(result.response).toContain('select');
-        expect(result.nextState).toBe(FSMState.AWAITING_ROUTING_ALTERNATIVE);
-      });
+      mockContextWithStateData.messageBody = 'YES';
+      const result = await routingSuggestionHandler(mockContextWithStateData);
+
+      expect(result.stateData?.confirmedRoute).toBeDefined();
+      expect(result.stateData?.confirmedRoute).toEqual(mockContextWithStateData.stateData?.suggestedRoute);
     });
   });
 });

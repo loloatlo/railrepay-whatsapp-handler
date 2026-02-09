@@ -172,6 +172,53 @@ describe('Journey Time Handler', () => {
       expect(result.stateData?.isDirect).toBe(true);
     });
 
+    it('should store ALL routes in stateData.allRoutes for routing-alternative.handler (was: storing only routes[0]) - AC-1', async () => {
+      /**
+       * TD-WHATSAPP-054 AC-1: journey-time.handler must store ALL routes from API response
+       * This provides routing-alternative.handler with Set 1 alternatives (indices 1, 2, 3)
+       */
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          routes: [
+            {
+              legs: [{ from: 'AGV', to: 'HFD', operator: 'TfW', departure: '08:31', arrival: '09:00' }],
+              totalDuration: '29m',
+              isDirect: true,
+            },
+            {
+              legs: [{ from: 'AGV', to: 'HFD', operator: 'TfW', departure: '09:31', arrival: '10:00' }],
+              totalDuration: '29m',
+              isDirect: true,
+            },
+            {
+              legs: [{ from: 'AGV', to: 'HFD', operator: 'TfW', departure: '10:31', arrival: '11:00' }],
+              totalDuration: '29m',
+              isDirect: true,
+            },
+            {
+              legs: [{ from: 'AGV', to: 'HFD', operator: 'TfW', departure: '11:31', arrival: '12:00' }],
+              totalDuration: '29m',
+              isDirect: true,
+            },
+          ],
+        },
+      });
+
+      mockContext.messageBody = '08:30';
+      const result = await journeyTimeHandler(mockContext);
+
+      // Assert: stateData includes allRoutes array
+      expect(result.stateData?.allRoutes).toBeDefined();
+      expect(Array.isArray(result.stateData?.allRoutes)).toBe(true);
+      expect(result.stateData?.allRoutes).toHaveLength(4);
+
+      // Assert: allRoutes contains all routes, not just the first one
+      expect(result.stateData?.allRoutes[0].legs[0].departure).toBe('08:31');
+      expect(result.stateData?.allRoutes[1].legs[0].departure).toBe('09:31');
+      expect(result.stateData?.allRoutes[2].legs[0].departure).toBe('10:31');
+      expect(result.stateData?.allRoutes[3].legs[0].departure).toBe('11:31');
+    });
+
     it('should preserve previous stateData fields', async () => {
       mockedAxios.get.mockResolvedValueOnce({
         data: {
@@ -226,6 +273,49 @@ describe('Journey Time Handler', () => {
       expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_CONFIRM);
       expect(result.stateData?.isDirect).toBe(false);
       expect(result.stateData?.interchangeStation).toBe('Hereford');
+    });
+
+    it('should store allRoutes in stateData for interchange journeys (AC-1)', async () => {
+      /**
+       * TD-WHATSAPP-054 AC-1: Interchange routes also need allRoutes stored
+       */
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          routes: [
+            {
+              legs: [
+                { from: 'Abergavenny', to: 'Hereford', departure: '08:31', arrival: '09:00', operator: 'TfW' },
+                { from: 'Hereford', to: 'Birmingham', departure: '09:40', arrival: '10:30', operator: 'TfW' },
+              ],
+              totalDuration: '1h 59m',
+              isDirect: false,
+            },
+            {
+              legs: [
+                { from: 'Abergavenny', to: 'Hereford', departure: '10:31', arrival: '11:00', operator: 'TfW' },
+                { from: 'Hereford', to: 'Birmingham', departure: '11:40', arrival: '12:30', operator: 'TfW' },
+              ],
+              totalDuration: '1h 59m',
+              isDirect: false,
+            },
+          ],
+        },
+      });
+
+      mockContext.messageBody = '08:30';
+      mockContext.stateData = {
+        ...mockContext.stateData,
+        destination: 'BHM',
+        destinationName: 'Birmingham New Street',
+      };
+
+      const result = await journeyTimeHandler(mockContext);
+
+      // Assert: allRoutes array stored
+      expect(result.stateData?.allRoutes).toBeDefined();
+      expect(result.stateData?.allRoutes).toHaveLength(2);
+      expect(result.stateData?.allRoutes[0].isDirect).toBe(false);
+      expect(result.stateData?.allRoutes[1].isDirect).toBe(false);
     });
   });
 

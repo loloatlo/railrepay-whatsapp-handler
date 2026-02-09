@@ -227,7 +227,9 @@ You can:
 Or reply SKIP to submit without a ticket (for MVP testing).`,
         nextState: FSMState.AWAITING_TICKET_UPLOAD,
         stateData: {
+          ...ctx.stateData,
           routingConfirmed: true,
+          confirmedRoute: ctx.stateData?.suggestedRoute,
         },
       };
     }
@@ -241,6 +243,7 @@ Or reply SKIP to submit without a ticket (for MVP testing).`,
         response: `Let me show you some alternative routes.`,
         nextState: FSMState.AWAITING_ROUTING_ALTERNATIVE,
         stateData: {
+          ...ctx.stateData,
           alternativeCount: 1,
         },
       };

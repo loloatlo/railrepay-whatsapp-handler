@@ -117,17 +117,21 @@ describe('Journey Confirm Handler', () => {
   });
 
   describe('Confirmation rejected (NO)', () => {
-    it('should accept "NO" and allow user to try different time', async () => {
+    it('should accept "NO" and transition to AWAITING_ROUTING_ALTERNATIVE (was: AWAITING_JOURNEY_TIME) - AC-2', async () => {
+      /**
+       * TD-WHATSAPP-054 AC-2: journey-confirm NO path should go to AWAITING_ROUTING_ALTERNATIVE
+       * User has already seen a matched route; rejecting it means they want alternatives, not to re-enter time
+       */
       mockContext.messageBody = 'NO';
       const result = await journeyConfirmHandler(mockContext);
       expect(result.response).toContain('alternative');
-      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_TIME);
+      expect(result.nextState).toBe(FSMState.AWAITING_ROUTING_ALTERNATIVE);
     });
 
-    it('should accept "no" (lowercase)', async () => {
+    it('should accept "no" (lowercase) and transition to AWAITING_ROUTING_ALTERNATIVE - AC-2', async () => {
       mockContext.messageBody = 'no';
       const result = await journeyConfirmHandler(mockContext);
-      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_TIME);
+      expect(result.nextState).toBe(FSMState.AWAITING_ROUTING_ALTERNATIVE);
     });
 
     it('should preserve stateData and set needsAlternatives flag', async () => {

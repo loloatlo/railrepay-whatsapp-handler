@@ -113,6 +113,7 @@ export async function initializeHandlers(): Promise<void> {
   const { routingSuggestionHandler } = await import('./routing-suggestion.handler.js');
   const { routingAlternativeHandler } = await import('./routing-alternative.handler.js');
   const { ticketUploadHandler } = await import('./ticket-upload.handler.js');
+  const { errorHandler } = await import('./error.handler.js');
 
   registerHandler(FSMState.START, startHandler);
   registerHandler(FSMState.AWAITING_TERMS, termsHandler);
@@ -125,4 +126,5 @@ export async function initializeHandlers(): Promise<void> {
   registerHandler(FSMState.AWAITING_ROUTING_CONFIRM, routingSuggestionHandler);
   registerHandler(FSMState.AWAITING_ROUTING_ALTERNATIVE, routingAlternativeHandler);
   registerHandler(FSMState.AWAITING_TICKET_UPLOAD, ticketUploadHandler);
+  registerHandler(FSMState.ERROR, errorHandler);
 }
