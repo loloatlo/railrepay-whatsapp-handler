@@ -236,8 +236,17 @@ describe('Journey Flow Integration: Time → Confirm → Ticket Upload', () => {
   });
 
   describe('User Rejects Route (NO)', () => {
-    it('should allow user to try different time when NO is selected', async () => {
-      // Step 1: Get a matched route
+    /**
+     * AC-6: Integration test updated for TD-WHATSAPP-056
+     * CHANGED BEHAVIOR: NO path now depends on allRoutes.length
+     * - allRoutes.length === 1 → Stay in AWAITING_JOURNEY_CONFIRM (AC-1)
+     * - allRoutes.length > 1 → Transition to AWAITING_ROUTING_ALTERNATIVE (AC-2)
+     */
+
+    it('should stay in AWAITING_JOURNEY_CONFIRM when only 1 route available (AC-1 integration test)', async () => {
+      // AC-6: Integration test for single-route NO path (TD-WHATSAPP-056 AC-1)
+      // SCENARIO: journey-matcher returned only 1 route, user says NO
+
       const timeContext: HandlerContext = {
         phoneNumber: '+447700900888',
         messageBody: '10:00',
@@ -262,7 +271,7 @@ describe('Journey Flow Integration: Time → Confirm → Ticket Upload', () => {
           routes: [{
             legs: [{ from: 'A', to: 'B', departure: '10:03', arrival: '10:30', operator: 'TfW' }],
             isDirect: true,
-          }],
+          }], // Only 1 route returned
         });
 
       const timeResult = await journeyTimeHandler(timeContext);
@@ -281,13 +290,91 @@ describe('Journey Flow Integration: Time → Confirm → Ticket Upload', () => {
 
       const confirmResult = await journeyConfirmHandler(confirmContext);
 
-      // Should go back to time entry
-      expect(confirmResult.nextState).toBe(FSMState.AWAITING_JOURNEY_TIME);
-      expect(confirmResult.response).toContain('alternative');
+      // AC-1: Should stay in AWAITING_JOURNEY_CONFIRM (single-route scenario)
+      expect(confirmResult.nextState).toBe(FSMState.AWAITING_JOURNEY_CONFIRM);
+      expect(confirmResult.response).toContain('only');
 
       // State data should be preserved (origin, destination, etc.)
       expect(confirmResult.stateData?.origin).toBe('AGV');
-      expect(confirmResult.stateData?.needsAlternatives).toBe(true);
+    });
+
+    it('should transition to AWAITING_ROUTING_ALTERNATIVE when 2+ routes available (AC-2 integration test)', async () => {
+      // AC-6: Integration test for multi-route NO path (TD-WHATSAPP-056 AC-2)
+      // SCENARIO: journey-matcher returned 4 routes, user says NO
+
+      const timeContext: HandlerContext = {
+        phoneNumber: '+447700900888',
+        messageBody: '10:00',
+        messageSid: 'SM-flow-test-7',
+        user: mockUser,
+        currentState: FSMState.AWAITING_JOURNEY_TIME,
+        correlationId: 'flow-test-corr-4',
+        stateData: {
+          travelDate: '2026-01-24',
+          journeyId: 'journey-flow-multi-reject',
+          origin: 'AGV',
+          destination: 'HFD',
+          originName: 'Abergavenny',
+          destinationName: 'Hereford',
+        },
+      };
+
+      nock(journeyMatcherUrl)
+        .get('/routes')
+        .query(true)
+        .reply(200, {
+          routes: [
+            {
+              legs: [{ from: 'AGV', to: 'HFD', departure: '10:03', arrival: '10:30', operator: 'TfW' }],
+              isDirect: true,
+            },
+            {
+              legs: [{ from: 'AGV', to: 'HFD', departure: '11:03', arrival: '11:30', operator: 'TfW' }],
+              isDirect: true,
+            },
+            {
+              legs: [{ from: 'AGV', to: 'HFD', departure: '12:03', arrival: '12:30', operator: 'TfW' }],
+              isDirect: true,
+            },
+            {
+              legs: [{ from: 'AGV', to: 'HFD', departure: '13:03', arrival: '13:30', operator: 'TfW' }],
+              isDirect: true,
+            },
+          ], // 4 routes returned
+        });
+
+      const timeResult = await journeyTimeHandler(timeContext);
+      expect(timeResult.nextState).toBe(FSMState.AWAITING_JOURNEY_CONFIRM);
+
+      // Step 2: User rejects with NO
+      const confirmContext: HandlerContext = {
+        phoneNumber: '+447700900888',
+        messageBody: 'NO',
+        messageSid: 'SM-flow-test-8',
+        user: mockUser,
+        currentState: FSMState.AWAITING_JOURNEY_CONFIRM,
+        correlationId: 'flow-test-corr-4',
+        stateData: timeResult.stateData,
+      };
+
+      const confirmResult = await journeyConfirmHandler(confirmContext);
+
+      // AC-2: Should transition to AWAITING_ROUTING_ALTERNATIVE (multi-route scenario)
+      expect(confirmResult.nextState).toBe(FSMState.AWAITING_ROUTING_ALTERNATIVE);
+      expect(confirmResult.response).toContain('alternative');
+
+      // AC-2: Should display Set 1 alternatives (routes 1, 2, 3 from allRoutes)
+      expect(confirmResult.response).toContain('11:03'); // Second route
+      expect(confirmResult.response).toContain('12:03'); // Third route
+      expect(confirmResult.response).toContain('13:03'); // Fourth route
+
+      // AC-2: currentAlternatives populated in stateData
+      expect(confirmResult.stateData?.currentAlternatives).toBeDefined();
+      expect(confirmResult.stateData?.currentAlternatives?.length).toBe(3);
+
+      // State data should be preserved
+      expect(confirmResult.stateData?.origin).toBe('AGV');
+      expect(confirmResult.stateData?.alternativeCount).toBe(1);
     });
   });
 

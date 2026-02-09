@@ -12,6 +12,7 @@
 import type { HandlerContext, HandlerResult } from './index.js';
 import { FSMState } from '../services/fsm.service.js';
 import { createLogger } from '@railrepay/winston-logger';
+import { buildAlternativesResponse } from '../utils/buildAlternativesResponse.js';
 
 const logger = createLogger({ serviceName: 'whatsapp-handler' });
 
@@ -54,19 +55,43 @@ Now please upload a photo of your ticket.`,
   }
 
   if (input === 'NO') {
-    const { journeyId } = ctx.stateData || {};
+    const { journeyId, allRoutes } = ctx.stateData || {};
 
-    logger.info('User rejected matched route', {
+    // AC-1: Check if only 1 route available
+    if (!allRoutes || allRoutes.length <= 1) {
+      logger.info('User rejected only available route', {
+        correlationId: ctx.correlationId,
+        journeyId,
+      });
+
+      return {
+        response: `This appears to be the only available route for your journey at this time. You may want to try a different departure time.
+
+Please reply with a different time (e.g., 14:30), or start over by sending a new date.`,
+        nextState: FSMState.AWAITING_JOURNEY_CONFIRM, // Stay in same state
+        stateData: ctx.stateData, // Preserve all fields
+      };
+    }
+
+    // AC-2: Multi-route path — build Set 1 alternatives
+    logger.info('User rejected matched route, showing alternatives from Set 1', {
       correlationId: ctx.correlationId,
       journeyId,
+      allRoutesCount: allRoutes.length,
     });
 
-    // User rejected - show alternative routes
+    // Skip index 0 (the suggested route user rejected), show indices 1-3
+    const alternativesSet1 = allRoutes.slice(1, 4);
+
+    const response = buildAlternativesResponse(alternativesSet1);
+
     return {
-      response: `No problem! Let me find some alternative routes for you.`,
+      response,
       nextState: FSMState.AWAITING_ROUTING_ALTERNATIVE,
       stateData: {
         ...ctx.stateData,
+        currentAlternatives: alternativesSet1,
+        alternativeCount: 1,
         needsAlternatives: true,
       },
     };

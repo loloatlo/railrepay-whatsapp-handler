@@ -20,46 +20,25 @@
 import type { HandlerContext, HandlerResult } from './index.js';
 import { FSMState } from '../services/fsm.service.js';
 import { createLogger } from '@railrepay/winston-logger';
+import { buildAlternativesResponse } from '../utils/buildAlternativesResponse.js';
 import axios from 'axios';
 
 export async function routingAlternativeHandler(ctx: HandlerContext): Promise<HandlerResult> {
   const logger = createLogger({ serviceName: 'whatsapp-handler' });
   const input = ctx.messageBody.trim().toUpperCase();
 
-  // Check if we're entering the alternative state (coming from AWAITING_ROUTING_CONFIRM or AWAITING_JOURNEY_CONFIRM)
-  if ((ctx.currentState === FSMState.AWAITING_ROUTING_CONFIRM || ctx.currentState === FSMState.AWAITING_JOURNEY_CONFIRM) && input === 'NO') {
-    // Set 1: Display alternatives from stateData.allRoutes (populated by journey-time.handler)
-    const allRoutes = ctx.stateData?.allRoutes || [];
+  // AC-4: First-entry fallback — if currentAlternatives missing and no user input, auto-fetch
+  // Only trigger fallback if user is just entering the state (empty input)
+  if (ctx.currentState === FSMState.AWAITING_ROUTING_ALTERNATIVE &&
+      !ctx.stateData?.currentAlternatives &&
+      !input) {
+    logger.info('Entering AWAITING_ROUTING_ALTERNATIVE without currentAlternatives, fetching from API', {
+      correlationId: ctx.correlationId,
+    });
 
-    // Skip index 0 (the suggested route that was rejected), show indices 1, 2, 3
-    const alternativesFromState = allRoutes.slice(1, 4);
-
-    if (alternativesFromState.length > 0) {
-      // We have alternatives from the original API call
-      logger.info('Presenting alternative routes from stateData', {
-        correlationId: ctx.correlationId,
-        alternativeCount: alternativesFromState.length,
-      });
-
-      const response = buildAlternativesResponse(alternativesFromState);
-
-      return {
-        response,
-        nextState: FSMState.AWAITING_ROUTING_ALTERNATIVE,
-        stateData: {
-          ...ctx.stateData,
-          currentAlternatives: alternativesFromState,
-          alternativeCount: 1,
-        },
-      };
-    } else {
-      // No alternatives in stateData - fall back to journey-matcher API
-      logger.info('No alternatives in stateData, calling journey-matcher API', {
-        correlationId: ctx.correlationId,
-      });
-
-      return await fetchAndDisplayAlternatives(ctx, logger, 1);
-    }
+    // Call journey-matcher API with offset=3 (skip first 3 routes shown in journey-confirm)
+    // Pass 1 to get offset=3, and isFirstEntry=true to NOT increment alternativeCount
+    return await fetchAndDisplayAlternatives(ctx, logger, 1, true);
   }
 
   // Handle user selection in AWAITING_ROUTING_ALTERNATIVE state
@@ -176,7 +155,8 @@ We'll be in touch within 24 hours.`,
 async function fetchAndDisplayAlternatives(
   ctx: HandlerContext,
   logger: any,
-  alternativeCount: number
+  alternativeCount: number,
+  isFirstEntry: boolean = false
 ): Promise<HandlerResult> {
   const { origin, destination, travelDate, departureTime } = ctx.stateData || {};
 
@@ -249,7 +229,7 @@ async function fetchAndDisplayAlternatives(
       stateData: {
         ...ctx.stateData,
         currentAlternatives: alternativesToDisplay,
-        alternativeCount: alternativeCount + 1,
+        alternativeCount: isFirstEntry ? alternativeCount : alternativeCount + 1,
       },
     };
   } catch (error: any) {
@@ -266,30 +246,3 @@ async function fetchAndDisplayAlternatives(
   }
 }
 
-/**
- * Build response message from route alternatives
- */
-function buildAlternativesResponse(routes: any[]): string {
-  let response = `Here are alternative routes for your journey:\n`;
-
-  routes.forEach((route, index) => {
-    const optionNumber = index + 1;
-    const legs = route.legs || [];
-
-    // Build route summary
-    const stationPath = legs.map((leg: any) => leg.from).concat(legs[legs.length - 1]?.to || []).join(' → ');
-
-    response += `\n${optionNumber}. ${stationPath}\n`;
-
-    // Add leg details
-    legs.forEach((leg: any, legIndex: number) => {
-      response += `   Leg ${legIndex + 1}: ${leg.from} → ${leg.to} (${leg.operator}, ${leg.departure}-${leg.arrival})\n`;
-    });
-
-    response += `   Total: ${route.totalDuration}\n`;
-  });
-
-  response += `\nReply with 1, 2, or 3 to select a route, or NONE if none of these match your journey.`;
-
-  return response;
-}

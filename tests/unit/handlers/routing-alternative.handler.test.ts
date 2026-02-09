@@ -71,150 +71,11 @@ describe('TD-WHATSAPP-054: Routing Alternative Handler (Remove Hardcoded Mocks)'
     delete process.env.JOURNEY_MATCHER_URL;
   });
 
-  describe('AC-1: Use stateData routes (Set 1) instead of hardcoded mocks', () => {
-    it('should display routes from stateData.allRoutes when entering from AWAITING_ROUTING_CONFIRM (was: hardcoded PAD-RDG-CDF)', async () => {
-      // AC-1: routing-alternative.handler uses stateData routes for Set 1
-      // BEHAVIOR: When user rejects suggested route, display allRoutes[1], [2], [3] (skip [0] which was suggested)
-
-      const allRoutes = [
-        {
-          legs: [{ from: 'AGV', to: 'HFD', operator: 'TfW', departure: '08:31', arrival: '09:00' }],
-          totalDuration: '29m',
-          isDirect: true,
-        },
-        {
-          legs: [{ from: 'AGV', to: 'HFD', operator: 'TfW', departure: '09:31', arrival: '10:00' }],
-          totalDuration: '29m',
-          isDirect: true,
-        },
-        {
-          legs: [{ from: 'AGV', to: 'HFD', operator: 'TfW', departure: '10:31', arrival: '11:00' }],
-          totalDuration: '29m',
-          isDirect: true,
-        },
-        {
-          legs: [{ from: 'AGV', to: 'HFD', operator: 'TfW', departure: '11:31', arrival: '12:00' }],
-          totalDuration: '29m',
-          isDirect: true,
-        },
-      ];
-
-      const result = await routingAlternativeHandler({
-        ...mockContext,
-        currentState: FSMState.AWAITING_ROUTING_CONFIRM,
-        messageBody: 'NO',
-        stateData: {
-          journeyId: 'journey-789',
-          origin: 'AGV',
-          destination: 'HFD',
-          travelDate: '2026-01-24',
-          departureTime: '08:30',
-          allRoutes, // Populated by journey-time.handler
-        },
-      });
-
-      // Assert: Response contains routes from stateData, NOT hardcoded PAD-RDG-CDF
-      expect(result.response).toContain('AGV');
-      expect(result.response).toContain('HFD');
-      expect(result.response).toContain('09:31'); // Second route (index 1)
-      expect(result.response).toContain('10:31'); // Third route (index 2)
-      expect(result.response).toContain('11:31'); // Fourth route (index 3)
-
-      // Assert: Should NOT contain hardcoded stations
-      expect(result.response).not.toContain('PAD');
-      expect(result.response).not.toContain('RDG');
-      expect(result.response).not.toContain('CDF');
-      expect(result.response).not.toContain('BHM');
-      expect(result.response).not.toContain('SWA');
-
-      expect(result.nextState).toBe(FSMState.AWAITING_ROUTING_ALTERNATIVE);
-      expect(result.stateData?.alternativeCount).toBe(1);
-    });
-
-    it('should display only available routes when allRoutes has fewer than 4 routes', async () => {
-      // BEHAVIOR: If journey-matcher only returned 2 routes total, only show allRoutes[1] (the one remaining alternative)
-
-      const allRoutes = [
-        {
-          legs: [{ from: 'AGV', to: 'HFD', operator: 'TfW', departure: '08:31', arrival: '09:00' }],
-          totalDuration: '29m',
-        },
-        {
-          legs: [{ from: 'AGV', to: 'HFD', operator: 'TfW', departure: '09:31', arrival: '10:00' }],
-          totalDuration: '29m',
-        },
-      ];
-
-      const result = await routingAlternativeHandler({
-        ...mockContext,
-        currentState: FSMState.AWAITING_ROUTING_CONFIRM,
-        messageBody: 'NO',
-        stateData: {
-          journeyId: 'journey-789',
-          origin: 'AGV',
-          destination: 'HFD',
-          travelDate: '2026-01-24',
-          departureTime: '08:30',
-          allRoutes,
-        },
-      });
-
-      // Assert: Only one alternative shown (allRoutes[1])
-      expect(result.response).toContain('09:31');
-      expect(result.response).toContain('1.'); // First option
-      expect(result.response).not.toContain('2.'); // No second option
-    });
-
-    it('should fall back to journey-matcher API when stateData.allRoutes is empty', async () => {
-      // BEHAVIOR: If no additional routes in stateData, immediately call journey-matcher API
-      // Verified: journey-matcher service exposes GET /routes endpoint (src/api/routes.ts)
-
-      vi.mocked(axios.get).mockResolvedValueOnce({
-        status: 200,
-        data: {
-          routes: [
-            {
-              legs: [{ from: 'AGV', to: 'HFD', operator: 'TfW', departure: '12:31', arrival: '13:00' }],
-              totalDuration: '29m',
-            },
-          ],
-        },
-      });
-
-      const result = await routingAlternativeHandler({
-        ...mockContext,
-        currentState: FSMState.AWAITING_ROUTING_CONFIRM,
-        messageBody: 'NO',
-        stateData: {
-          journeyId: 'journey-789',
-          origin: 'AGV',
-          destination: 'HFD',
-          travelDate: '2026-01-24',
-          departureTime: '08:30',
-          allRoutes: [
-            {
-              legs: [{ from: 'AGV', to: 'HFD', operator: 'TfW', departure: '08:31', arrival: '09:00' }],
-              totalDuration: '29m',
-            },
-          ], // Only 1 route (the suggested one), no alternatives
-        },
-      });
-
-      // Assert: axios.get was called with offset parameter
-      expect(axios.get).toHaveBeenCalledWith(
-        expect.stringContaining('/routes'),
-        expect.objectContaining({
-          params: expect.objectContaining({
-            from: 'AGV',
-            to: 'HFD',
-            date: '2026-01-24',
-            time: '08:30',
-            offset: 3, // Set 1 offset (skip first 3 routes)
-          }),
-        })
-      );
-    });
-  });
+  // REMOVED: Tests that checked routing-alternative.handler with currentState=AWAITING_ROUTING_CONFIRM
+  // These tests were written for TD-WHATSAPP-054 before dead code removal was identified in TD-WHATSAPP-056.
+  // The FSM service registers routing-alternative.handler ONLY for AWAITING_ROUTING_ALTERNATIVE state.
+  // Therefore, currentState=AWAITING_ROUTING_CONFIRM is architecturally impossible in this handler.
+  // The "NO" handling logic is now in journey-confirm.handler (TD-WHATSAPP-056 AC-1, AC-2).
 
   describe('AC-1: Use journey-matcher API for Set 2+ instead of hardcoded mocks', () => {
     it('should call journey-matcher API with offset when user says NONE (was: showing same hardcoded routes)', async () => {
@@ -345,31 +206,10 @@ describe('TD-WHATSAPP-054: Routing Alternative Handler (Remove Hardcoded Mocks)'
     });
   });
 
-  describe('AC-3: AWAITING_ROUTING_ALTERNATIVE reachable from AWAITING_ROUTING_CONFIRM', () => {
-    it('should transition to AWAITING_ROUTING_ALTERNATIVE when user says NO in AWAITING_ROUTING_CONFIRM state', async () => {
-      // AC-3: User can reach AWAITING_ROUTING_ALTERNATIVE by rejecting routing suggestion
-
-      const result = await routingAlternativeHandler({
-        ...mockContext,
-        currentState: FSMState.AWAITING_ROUTING_CONFIRM,
-        messageBody: 'NO',
-        stateData: {
-          journeyId: 'journey-789',
-          origin: 'AGV',
-          destination: 'HFD',
-          travelDate: '2026-01-24',
-          departureTime: '08:30',
-          allRoutes: [
-            { legs: [{ from: 'AGV', to: 'HFD', operator: 'TfW', departure: '08:31', arrival: '09:00' }], totalDuration: '29m' },
-            { legs: [{ from: 'AGV', to: 'HFD', operator: 'TfW', departure: '09:31', arrival: '10:00' }], totalDuration: '29m' },
-          ],
-        },
-      });
-
-      expect(result.nextState).toBe(FSMState.AWAITING_ROUTING_ALTERNATIVE);
-      expect(result.response).toContain('alternative');
-    });
-  });
+  // REMOVED: AC-3 test with currentState=AWAITING_ROUTING_CONFIRM (dead code test)
+  // The FSM service registers routing-alternative.handler ONLY for AWAITING_ROUTING_ALTERNATIVE state.
+  // AC-3 ("reachable from AWAITING_ROUTING_CONFIRM") is now satisfied by journey-confirm.handler
+  // transitioning TO AWAITING_ROUTING_ALTERNATIVE (TD-WHATSAPP-056 AC-2).
 
   describe('AC-4: Store full route object instead of index number', () => {
     it('should store full route object in stateData.confirmedRoute when user selects option (was: storing only index number)', async () => {
@@ -497,34 +337,8 @@ describe('TD-WHATSAPP-054: Routing Alternative Handler (Remove Hardcoded Mocks)'
   });
 
   describe('stateData propagation across all paths', () => {
-    it('should preserve all stateData fields when displaying alternatives (Set 1)', async () => {
-      const result = await routingAlternativeHandler({
-        ...mockContext,
-        currentState: FSMState.AWAITING_ROUTING_CONFIRM,
-        messageBody: 'NO',
-        stateData: {
-          journeyId: 'journey-789',
-          origin: 'AGV',
-          destination: 'HFD',
-          travelDate: '2026-01-24',
-          departureTime: '08:30',
-          originName: 'Abergavenny',
-          destinationName: 'Hereford',
-          allRoutes: [
-            { legs: [], totalDuration: '29m' },
-            { legs: [], totalDuration: '30m' },
-          ],
-        },
-      });
-
-      expect(result.stateData?.journeyId).toBe('journey-789');
-      expect(result.stateData?.origin).toBe('AGV');
-      expect(result.stateData?.destination).toBe('HFD');
-      expect(result.stateData?.travelDate).toBe('2026-01-24');
-      expect(result.stateData?.departureTime).toBe('08:30');
-      expect(result.stateData?.originName).toBe('Abergavenny');
-      expect(result.stateData?.destinationName).toBe('Hereford');
-    });
+    // REMOVED: Test with currentState=AWAITING_ROUTING_CONFIRM (dead code test)
+    // State data propagation for Set 1 is now tested in journey-confirm-single-route.test.ts (TD-WHATSAPP-056 AC-2)
 
     it('should preserve all stateData fields when user says NONE (Set 2+)', async () => {
       vi.mocked(axios.get).mockResolvedValueOnce({
