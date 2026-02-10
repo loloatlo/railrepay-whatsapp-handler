@@ -89,6 +89,7 @@ function createJourneyAndRespond(
         departure: leg.departure,
         arrival: leg.arrival,
         operator: leg.operator,
+        tripId: leg.tripId || null,
       }));
     }
 
