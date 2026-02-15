@@ -13,15 +13,22 @@
 import express from 'express';
 import Redis from 'ioredis';
 import { MetricsPusher } from '@railrepay/metrics-pusher';
+import { createLogger } from '@railrepay/winston-logger';
 import { getConfig } from './config/index.js';
 import { createDatabaseClientFromEnv } from './db/client.js';
 import { setPool } from './db/pool.js';
 import { createWebhookRouter } from './routes/webhook.js';
 import { createHealthRouter } from './routes/health.js';
 import { createMetricsRouter, initializeMetrics } from './routes/metrics.js';
+import { initializeNotificationMetrics, notificationsSentCounter, notificationErrorsCounter } from './routes/notification-metrics.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { initializeHandlers } from './handlers/index.js';
 import { getLogger } from './lib/logger.js';
+import { createConsumerConfig, ConsumerConfigError } from './consumers/config.js';
+import { EvaluationConsumer } from './consumers/evaluation-consumer.js';
+import { EvaluationCompletedHandler } from './kafka/evaluation-completed-handler.js';
+import { UserRepository } from './db/repositories/user.repository.js';
+import { TwilioMessagingService } from './services/twilio-messaging.service.js';
 
 // Log startup immediately so we can see something in Railway logs
 console.log('[whatsapp-handler] Starting service...');
@@ -33,6 +40,7 @@ let dbClient: ReturnType<typeof createDatabaseClientFromEnv>;
 let dbPool: ReturnType<typeof dbClient.getPool>;
 let redis: Redis;
 let metricsPusher: MetricsPusher;
+let evaluationConsumer: EvaluationConsumer | null = null;
 let server: ReturnType<typeof app.listen>;
 
 // Create Express app
@@ -99,6 +107,88 @@ try {
   });
   await metricsPusher.start();
   console.log('[whatsapp-handler] Metrics pusher started');
+
+  // Initialize notification metrics (BL-148: AC-10)
+  console.log('[whatsapp-handler] Initializing notification metrics...');
+  initializeNotificationMetrics();
+  console.log('[whatsapp-handler] Notification metrics initialized');
+
+  // Start Kafka event consumer for evaluation.completed (BL-148)
+  // AC-1: Create Kafka consumer on startup
+  // AC-7: Graceful degradation -- if Kafka env vars missing, continue HTTP-only
+  try {
+    const consumerConfig = createConsumerConfig();
+
+    // Create handler dependencies
+    const userRepository = new UserRepository(dbPool);
+    const twilioMessaging = new TwilioMessagingService(
+      {
+        accountSid: config.twilio.accountSid,
+        authToken: config.twilio.authToken,
+        whatsappNumber: config.twilio.whatsappNumber,
+      },
+      logger
+    );
+
+    // AC-8: Simple Redis-based idempotency store
+    const idempotencyStore = {
+      async hasProcessed(correlationId: string): Promise<boolean> {
+        const key = `notif:processed:${correlationId}`;
+        const result = await redis.get(key);
+        return result !== null;
+      },
+      async markProcessed(correlationId: string): Promise<void> {
+        const key = `notif:processed:${correlationId}`;
+        // TTL of 7 days -- evaluation.completed events older than this are safe to reprocess
+        await redis.set(key, '1', 'EX', 7 * 24 * 60 * 60);
+      },
+    };
+
+    // Create winston logger for consumer (AC-9)
+    const consumerLogger = createLogger({
+      serviceName: 'whatsapp-handler',
+      level: 'info',
+    });
+
+    // Create handler
+    const evaluationHandler = new EvaluationCompletedHandler({
+      userRepository,
+      twilioMessaging,
+      idempotencyStore,
+      logger: consumerLogger,
+      metrics: {
+        notificationsSent: notificationsSentCounter,
+        notificationErrors: notificationErrorsCounter,
+      },
+    });
+
+    // AC-1, AC-2: Create and start consumer
+    evaluationConsumer = new EvaluationConsumer({
+      ...consumerConfig,
+      logger: consumerLogger,
+      handler: (payload) => evaluationHandler.handle(payload),
+    });
+
+    console.log('[whatsapp-handler] Starting Kafka consumer for evaluation.completed...');
+    await evaluationConsumer.start();
+    console.log('[whatsapp-handler] Kafka consumer started successfully');
+  } catch (error) {
+    if (error instanceof ConsumerConfigError) {
+      // AC-7: Missing Kafka config -- log warning but continue (HTTP-only mode)
+      console.log('[whatsapp-handler] Kafka consumer not started -- missing configuration, running in HTTP-only mode');
+      logger.warn('Kafka consumer not started - missing configuration, running in HTTP-only mode', {
+        component: 'whatsapp-handler/kafka',
+        error: (error as Error).message,
+      });
+    } else {
+      // Other errors -- log but don't fail startup (graceful degradation)
+      console.error('[whatsapp-handler] Failed to start Kafka consumer, running in HTTP-only mode');
+      logger.error('Failed to start Kafka consumer, running in HTTP-only mode', {
+        component: 'whatsapp-handler/kafka',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   // Global middleware
   app.use(express.json());
@@ -197,7 +287,18 @@ async function shutdown(signal: string) {
     signal,
   });
 
-  // Close HTTP server first (stop accepting new requests)
+  // AC-11: Stop Kafka consumer FIRST (stop processing messages)
+  if (evaluationConsumer) {
+    logger.info('Stopping Kafka consumer', {
+      component: 'whatsapp-handler/kafka',
+    });
+    await evaluationConsumer.stop();
+    logger.info('Kafka consumer stopped', {
+      component: 'whatsapp-handler/kafka',
+    });
+  }
+
+  // Close HTTP server (stop accepting new requests)
   server.close(() => {
     logger.info('HTTP server closed', {
       component: 'whatsapp-handler/server',

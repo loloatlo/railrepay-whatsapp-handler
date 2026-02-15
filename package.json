@@ -34,6 +34,7 @@
   "author": "RailRepay",
   "license": "UNLICENSED",
   "dependencies": {
+    "@railrepay/kafka-client": "^2.0.0",
     "@railrepay/metrics-pusher": "^1.1.0",
     "@railrepay/postgres-client": "^1.0.0",
     "@railrepay/redis-cache": "^1.0.0",
@@ -46,6 +47,7 @@
     "prom-client": "^15.1.0",
     "redis": "^4.6.12",
     "twilio": "^4.23.0",
+    "uuid": "^13.0.0",
     "winston": "^3.11.0",
     "winston-loki": "^6.0.8",
     "zod": "^3.22.4"
@@ -56,6 +58,7 @@
     "@types/node": "^20.10.6",
     "@types/pg": "^8.10.9",
     "@types/supertest": "^6.0.3",
+    "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^6.17.0",
     "@typescript-eslint/parser": "^6.17.0",
     "@vitest/coverage-v8": "^1.6.1",
