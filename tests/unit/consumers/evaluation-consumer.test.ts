@@ -17,6 +17,7 @@ vi.mock('@railrepay/kafka-client', () => {
   const mockConnect = vi.fn().mockResolvedValue(undefined);
   const mockDisconnect = vi.fn().mockResolvedValue(undefined);
   const mockSubscribe = vi.fn().mockResolvedValue(undefined);
+  const mockStart = vi.fn().mockResolvedValue(undefined);
   const mockGetStats = vi.fn().mockReturnValue({
     processedCount: 0,
     errorCount: 0,
@@ -29,6 +30,7 @@ vi.mock('@railrepay/kafka-client', () => {
     connect: mockConnect,
     disconnect: mockDisconnect,
     subscribe: mockSubscribe,
+    start: mockStart,
     getStats: mockGetStats,
     isConsumerRunning: mockIsConsumerRunning,
   }));
@@ -37,6 +39,7 @@ vi.mock('@railrepay/kafka-client', () => {
   (MockKafkaConsumer as any)._mockConnect = mockConnect;
   (MockKafkaConsumer as any)._mockDisconnect = mockDisconnect;
   (MockKafkaConsumer as any)._mockSubscribe = mockSubscribe;
+  (MockKafkaConsumer as any)._mockStart = mockStart;
   (MockKafkaConsumer as any)._mockGetStats = mockGetStats;
   (MockKafkaConsumer as any)._mockIsConsumerRunning = mockIsConsumerRunning;
 
@@ -51,6 +54,7 @@ describe('EvaluationConsumer', () => {
   let mockConnect: ReturnType<typeof vi.fn>;
   let mockDisconnect: ReturnType<typeof vi.fn>;
   let mockSubscribe: ReturnType<typeof vi.fn>;
+  let mockStart: ReturnType<typeof vi.fn>;
   let mockIsConsumerRunning: ReturnType<typeof vi.fn>;
 
   const mockLogger = {
@@ -80,6 +84,7 @@ describe('EvaluationConsumer', () => {
     mockConnect = KafkaConsumerMock._mockConnect;
     mockDisconnect = KafkaConsumerMock._mockDisconnect;
     mockSubscribe = KafkaConsumerMock._mockSubscribe;
+    mockStart = KafkaConsumerMock._mockStart;
     mockIsConsumerRunning = KafkaConsumerMock._mockIsConsumerRunning;
 
     consumer = new EvaluationConsumer(validConfig);
@@ -121,6 +126,16 @@ describe('EvaluationConsumer', () => {
         'evaluation.completed',
         expect.any(Function)
       );
+    });
+
+    it('AC-2: should call KafkaConsumer.start() after subscribe (v2.0.0 two-step API)', async () => {
+      await consumer.start();
+
+      expect(mockStart).toHaveBeenCalledTimes(1);
+      // start() must be called AFTER subscribe()
+      const subscribeOrder = mockSubscribe.mock.invocationCallOrder[0];
+      const startOrder = mockStart.mock.invocationCallOrder[0];
+      expect(startOrder).toBeGreaterThan(subscribeOrder);
     });
 
     it('AC-2: should parse message value and pass payload to handler', async () => {

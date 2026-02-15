@@ -147,6 +147,10 @@ export class EvaluationConsumer {
         }
       });
 
+      // @railrepay/kafka-client v2.0.0: subscribe() only registers the topic;
+      // start() must be called to begin consuming messages via KafkaJS run()
+      await this.consumer.start();
+
       this.started = true;
       this.stats.isRunning = true;
     } catch (error) {
