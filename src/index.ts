@@ -228,7 +228,7 @@ try {
   app.get('/', (_req, res) => {
     res.status(200).json({
       service: config.serviceName,
-      version: '1.0.2',
+      version: '1.0.3',
       status: 'running',
     });
   });
