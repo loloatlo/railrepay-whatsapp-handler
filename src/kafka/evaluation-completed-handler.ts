@@ -67,6 +67,7 @@ export interface EvaluationCompletedPayload {
   eligible: boolean;
   scheme: string;
   compensation_pence: number;
+  delay_minutes: number; // BL-151 AC-7: delay duration for user-friendly messages
   correlation_id?: string;
 }
 
@@ -201,17 +202,22 @@ export class EvaluationCompletedHandler {
 
   /**
    * AC-4: Build eligible evaluation message
+   * BL-151 AC-2: Include delay minutes
+   * BL-151 AC-3: No scheme name
+   * BL-151 AC-4: No false auto-process promise
    */
   private buildEligibleMessage(payload: EvaluationCompletedPayload): string {
     const compensationGBP = formatPenceAsGBP(payload.compensation_pence);
-    return `Great news! Your journey is eligible for compensation under the ${payload.scheme} scheme.\n\nEstimated compensation: \u00a3${compensationGBP}\n\nWe'll process your claim automatically. You'll receive updates on the progress.`;
+    return `Great news! Your train was delayed by ${payload.delay_minutes} minutes, and your journey is eligible for compensation.\n\nEstimated compensation: \u00a3${compensationGBP}\n\nWe'll be in touch with next steps.`;
   }
 
   /**
    * AC-5: Build ineligible evaluation message
+   * BL-151 AC-5: No scheme name
+   * BL-151 AC-6: Include delay minutes
    */
   private buildIneligibleMessage(payload: EvaluationCompletedPayload): string {
-    return `We've completed the evaluation of your journey under the ${payload.scheme} scheme.\n\nUnfortunately, your journey does not qualify for compensation under this scheme.\n\nIf you have questions, reply to this message.`;
+    return `We've completed the evaluation of your journey. Your train was delayed by ${payload.delay_minutes} minutes.\n\nUnfortunately, your journey does not qualify for compensation at this time.\n\nIf you have questions, reply to this message.`;
   }
 
   /**

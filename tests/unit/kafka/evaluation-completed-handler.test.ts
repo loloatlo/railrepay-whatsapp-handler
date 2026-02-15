@@ -2,11 +2,22 @@
  * Evaluation Completed Handler Unit Tests
  *
  * Phase TD-1: Failing tests for BL-148 / TD-WHATSAPP-060
+ * Updated for BL-151 / TD-WHATSAPP-061: Improve notification messages
+ *
+ * BL-148 ACs (preserved):
  * AC-3: On receiving evaluation.completed event, look up user phone_number by user_id
- * AC-4: For eligible evaluations, send WhatsApp message with eligibility status, compensation (GBP), scheme name
+ * AC-4: For eligible evaluations, send WhatsApp message with eligibility status, compensation (GBP)
  * AC-5: For ineligible evaluations, send WhatsApp message indicating not qualified
  * AC-8: Idempotent processing -- duplicate events do not send duplicate notifications
  * AC-9: Uses @railrepay/winston-logger with correlation_id from event payload
+ *
+ * BL-151 ACs (new):
+ * AC-2: Eligible message includes delay minutes
+ * AC-3: Eligible message does NOT include scheme name
+ * AC-4: Eligible message does NOT include auto-process promise
+ * AC-5: Ineligible message does NOT include scheme name
+ * AC-6: Ineligible message includes delay minutes
+ * AC-7: EvaluationCompletedPayload includes delay_minutes: number
  *
  * Pattern reference: evaluation-coordinator/src/kafka/delay-detected-handler.ts
  */
@@ -53,6 +64,7 @@ describe('EvaluationCompletedHandler', () => {
     eligible: true,
     scheme: 'DR30',
     compensation_pence: 2500,
+    delay_minutes: 38, // BL-151 AC-7: delay_minutes in payload
     correlation_id: '123e4567-e89b-12d3-a456-426614174002',
   };
 
@@ -62,6 +74,7 @@ describe('EvaluationCompletedHandler', () => {
     eligible: false,
     scheme: 'DR30',
     compensation_pence: 0,
+    delay_minutes: 12, // BL-151 AC-7: delay_minutes in payload
     correlation_id: '223e4567-e89b-12d3-a456-426614174002',
   };
 
@@ -172,11 +185,15 @@ describe('EvaluationCompletedHandler', () => {
       expect(sentMessage).toContain('15.50');
     });
 
-    it('AC-4: should include scheme name in message', async () => {
+    // BL-151 AC-3: Eligible message must NOT include scheme name (rail industry jargon)
+    it('BL-151 AC-3: should NOT include scheme name in eligible message', async () => {
       await handler.handle(validEligiblePayload);
 
       const sentMessage = mockTwilioMessaging.sendWhatsAppMessage.mock.calls[0][1];
-      expect(sentMessage).toContain('DR30');
+      expect(sentMessage).not.toContain('DR30');
+      expect(sentMessage).not.toContain('DR15');
+      expect(sentMessage).not.toContain('Delay Repay');
+      expect(sentMessage).not.toMatch(/scheme/i);
     });
 
     it('AC-4: should increment notifications_sent counter with eligible label', async () => {
@@ -203,11 +220,15 @@ describe('EvaluationCompletedHandler', () => {
       expect(sentMessage).toMatch(/does not qualify|not eligible|ineligible/i);
     });
 
-    it('AC-5: should include scheme name in ineligible message', async () => {
+    // BL-151 AC-5: Ineligible message must NOT include scheme name (rail industry jargon)
+    it('BL-151 AC-5: should NOT include scheme name in ineligible message', async () => {
       await handler.handle(validIneligiblePayload);
 
       const sentMessage = mockTwilioMessaging.sendWhatsAppMessage.mock.calls[0][1];
-      expect(sentMessage).toContain('DR30');
+      expect(sentMessage).not.toContain('DR30');
+      expect(sentMessage).not.toContain('DR15');
+      expect(sentMessage).not.toContain('Delay Repay');
+      expect(sentMessage).not.toMatch(/scheme/i);
     });
 
     it('AC-5: should increment notifications_sent counter with ineligible label', async () => {
@@ -216,6 +237,64 @@ describe('EvaluationCompletedHandler', () => {
       expect(mockMetrics.notificationsSent.inc).toHaveBeenCalledWith(
         expect.objectContaining({ result: 'ineligible' })
       );
+    });
+  });
+
+  // BL-151: Improved notification messages
+  describe('BL-151: improved notification messages', () => {
+    // AC-2: Eligible message includes delay minutes
+    it('BL-151 AC-2: eligible message should include delay minutes', async () => {
+      await handler.handle(validEligiblePayload);
+
+      const sentMessage = mockTwilioMessaging.sendWhatsAppMessage.mock.calls[0][1];
+      // validEligiblePayload has delay_minutes: 38
+      expect(sentMessage).toContain('38');
+      expect(sentMessage).toMatch(/38 minutes/i);
+    });
+
+    // AC-4: Eligible message must NOT include false auto-process promise
+    it('BL-151 AC-4: eligible message should NOT include auto-process promise', async () => {
+      await handler.handle(validEligiblePayload);
+
+      const sentMessage = mockTwilioMessaging.sendWhatsAppMessage.mock.calls[0][1];
+      expect(sentMessage).not.toContain('process your claim automatically');
+      expect(sentMessage).not.toContain('receive updates on the progress');
+    });
+
+    // AC-6: Ineligible message includes delay minutes
+    it('BL-151 AC-6: ineligible message should include delay minutes', async () => {
+      await handler.handle(validIneligiblePayload);
+
+      const sentMessage = mockTwilioMessaging.sendWhatsAppMessage.mock.calls[0][1];
+      // validIneligiblePayload has delay_minutes: 12
+      expect(sentMessage).toContain('12');
+      expect(sentMessage).toMatch(/12 minutes/i);
+    });
+
+    // AC-7: Payload with delay_minutes is accepted without error
+    it('BL-151 AC-7: should process payload containing delay_minutes without error', async () => {
+      const payloadWithDelayMinutes = {
+        ...validEligiblePayload,
+        delay_minutes: 45,
+      };
+
+      // Should not throw
+      await handler.handle(payloadWithDelayMinutes);
+
+      expect(mockTwilioMessaging.sendWhatsAppMessage).toHaveBeenCalledTimes(1);
+    });
+
+    // AC-2: Delay minutes with different values in eligible message
+    it('BL-151 AC-2: eligible message should include varied delay minutes correctly', async () => {
+      const payloadWith120Min = {
+        ...validEligiblePayload,
+        delay_minutes: 120,
+      };
+
+      await handler.handle(payloadWith120Min);
+
+      const sentMessage = mockTwilioMessaging.sendWhatsAppMessage.mock.calls[0][1];
+      expect(sentMessage).toMatch(/120 minutes/i);
     });
   });
 
