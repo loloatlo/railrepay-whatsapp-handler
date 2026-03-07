@@ -45,10 +45,13 @@ describe('TD-WHATSAPP-055: ticket-upload.handler journey.created payload enrichm
       updated_at: new Date('2024-11-20T10:00:00Z'),
     };
 
-    // Context with FULL stateData from journey flow
+    // Context with FULL stateData from journey flow.
+    // TD-WHATSAPP-058: SKIP no longer calls createJourneyAndRespond.
+    // These tests exercise payload enrichment via the media upload path.
     mockContext = {
       phoneNumber: '+447700900123',
-      messageBody: 'SKIP',
+      messageBody: '',
+      mediaUrl: 'https://api.twilio.com/media/test',
       messageSid: 'SM123',
       user: mockUser,
       currentState: FSMState.AWAITING_TICKET_UPLOAD,

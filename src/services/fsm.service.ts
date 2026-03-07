@@ -38,6 +38,9 @@ export enum FSMState {
   AWAITING_ROUTING_CONFIRM = 'AWAITING_ROUTING_CONFIRM', // Routing suggestion shown, awaiting YES/NO (AC-2)
   AWAITING_ROUTING_ALTERNATIVE = 'AWAITING_ROUTING_ALTERNATIVE', // Alternative routes shown, awaiting selection (AC-3)
   AWAITING_TICKET_UPLOAD = 'AWAITING_TICKET_UPLOAD', // Awaiting ticket photo
+  AWAITING_TICKET_PRICE = 'AWAITING_TICKET_PRICE', // Manual ticket flow: awaiting price input (after SKIP at upload)
+  AWAITING_TICKET_CLASS = 'AWAITING_TICKET_CLASS', // Manual ticket flow: awaiting Standard/First class input
+  AWAITING_TICKET_TYPE = 'AWAITING_TICKET_TYPE', // Manual ticket flow: awaiting Advance/Anytime/Off-Peak/Super Off-Peak
   AWAITING_CLAIM_STATUS = 'AWAITING_CLAIM_STATUS', // User requested status check
   ERROR = 'ERROR', // Invalid state or timeout (recovery state)
 }

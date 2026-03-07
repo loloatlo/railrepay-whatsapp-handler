@@ -18,9 +18,13 @@ export async function ticketUploadHandler(ctx: HandlerContext): Promise<HandlerR
     return createJourneyAndRespond(ctx, ctx.mediaUrl);
   }
 
-  // Handle SKIP for MVP
+  // Handle SKIP — transition to manual ticket price collection (TD-WHATSAPP-058)
   if (input === 'SKIP') {
-    return createJourneyAndRespond(ctx, null);
+    return {
+      response: `No problem! To help calculate your compensation, how much did your ticket cost? (e.g. £45.50)`,
+      nextState: FSMState.AWAITING_TICKET_PRICE,
+      stateData: { ...(ctx.stateData || {}) },
+    };
   }
 
   // No media and not SKIP
@@ -35,7 +39,7 @@ You can:
   };
 }
 
-function createJourneyAndRespond(
+export function createJourneyAndRespond(
   ctx: HandlerContext,
   ticketUrl: string | null
 ): HandlerResult {
@@ -95,6 +99,17 @@ function createJourneyAndRespond(
 
     // AC-5: journey_type (default 'single' for MVP)
     payload.journey_type = 'single';
+
+    // TD-WHATSAPP-058: ticket fields (only present when manual ticket flow was completed)
+    if (ctx.stateData.ticket_fare_pence !== undefined) {
+      payload.ticket_fare_pence = ctx.stateData.ticket_fare_pence;
+    }
+    if (ctx.stateData.ticket_class !== undefined) {
+      payload.ticket_class = ctx.stateData.ticket_class;
+    }
+    if (ctx.stateData.ticket_type !== undefined) {
+      payload.ticket_type = ctx.stateData.ticket_type;
+    }
   }
 
   // Create journey.created event

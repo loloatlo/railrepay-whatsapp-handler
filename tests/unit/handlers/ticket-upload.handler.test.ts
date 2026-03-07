@@ -70,25 +70,27 @@ describe('Ticket Upload Handler', () => {
   });
 
   describe('Skip option (MVP)', () => {
-    it('should allow "SKIP" for MVP', async () => {
+    // TD-WHATSAPP-058: SKIP no longer immediately submits the journey.
+    // It now transitions to AWAITING_TICKET_PRICE to collect ticket data conversationally.
+    it('should prompt for ticket price when user sends "SKIP"', async () => {
       mockContext.messageBody = 'SKIP';
       const result = await ticketUploadHandler(mockContext);
-      expect(result.response).toContain('success');
-      expect(result.nextState).toBe(FSMState.AUTHENTICATED);
+      expect(result.response).toMatch(/cost|price|paid|ticket/i);
+      expect(result.nextState).toBe(FSMState.AWAITING_TICKET_PRICE);
     });
 
-    it('should accept "skip" (lowercase)', async () => {
+    it('should accept "skip" (lowercase) and transition to AWAITING_TICKET_PRICE', async () => {
       mockContext.messageBody = 'skip';
       const result = await ticketUploadHandler(mockContext);
-      expect(result.nextState).toBe(FSMState.AUTHENTICATED);
+      expect(result.nextState).toBe(FSMState.AWAITING_TICKET_PRICE);
     });
 
-    it('should publish event even without ticket', async () => {
+    it('should NOT publish journey.created event when user sends SKIP', async () => {
+      // TD-WHATSAPP-058: journey is only submitted after ticket data is collected
       mockContext.messageBody = 'SKIP';
       const result = await ticketUploadHandler(mockContext);
-      expect(result.publishEvents).toBeDefined();
-      const event = result.publishEvents![0];
-      expect(event.event_type).toBe('journey.created');
+      const hasJourneyEvent = result.publishEvents?.some(e => e.event_type === 'journey.created');
+      expect(hasJourneyEvent).toBeFalsy();
     });
   });
 
