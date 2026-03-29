@@ -98,8 +98,21 @@ export async function ticketOrManualHandler(ctx: HandlerContext): Promise<Handle
       if (ef.fare_pence != null) stateData.farePence = ef.fare_pence;
       if (ef.operator_name != null) stateData.operatorName = ef.operator_name;
 
+      // Build summary of extracted fields for user review
+      const summaryLines: string[] = ["Got it! Here's what I found on your ticket:"];
+      if (stateData.originName) summaryLines.push(`• From: ${stateData.originName}`);
+      else if (stateData.origin) summaryLines.push(`• From: ${stateData.origin}`);
+      if (stateData.destinationName) summaryLines.push(`• To: ${stateData.destinationName}`);
+      else if (stateData.destination) summaryLines.push(`• To: ${stateData.destination}`);
+      if (stateData.travelDate) summaryLines.push(`• Date: ${stateData.travelDate}`);
+      if (stateData.departureTime) summaryLines.push(`• Time: ${stateData.departureTime}`);
+      if (stateData.ticketType) summaryLines.push(`• Ticket: ${stateData.ticketType}`);
+      if (stateData.ticketClass) summaryLines.push(`• Class: ${stateData.ticketClass}`);
+      summaryLines.push('');
+      summaryLines.push('Is this correct? Reply YES to confirm or NO to enter details manually.');
+
       return {
-        response: "Got it! I've scanned your ticket. Please review the details and confirm.",
+        response: summaryLines.join('\n'),
         nextState: FSMState.AWAITING_OCR_REVIEW,
         stateData,
       };
