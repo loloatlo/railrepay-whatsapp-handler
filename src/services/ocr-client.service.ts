@@ -126,14 +126,39 @@ export async function callOcrService(
     let ocrBody: Record<string, unknown> = { ...payload };
 
     if (payload.image_url && !payload.image_base64 && process.env.TWILIO_ACCOUNT_SID) {
-      const imageBase64 = await downloadTwilioMedia(payload.image_url);
-      ocrBody = {
-        image_base64: imageBase64,
-        user_id: payload.user_id,
-        content_type: payload.content_type,
-        correlation_id: payload.correlation_id,
-      };
+      logger.info('Downloading image from Twilio', {
+        correlationId: payload.correlation_id,
+        mediaUrl: payload.image_url,
+      });
+
+      try {
+        const imageBase64 = await downloadTwilioMedia(payload.image_url);
+        logger.info('Twilio image downloaded successfully', {
+          correlationId: payload.correlation_id,
+          base64Length: imageBase64.length,
+        });
+        ocrBody = {
+          image_base64: imageBase64,
+          user_id: payload.user_id,
+          content_type: payload.content_type,
+          correlation_id: payload.correlation_id,
+        };
+      } catch (downloadError: any) {
+        logger.warn('Twilio image download failed', {
+          correlationId: payload.correlation_id,
+          errorMessage: downloadError?.message || String(downloadError),
+          errorCode: downloadError?.code,
+        });
+        throw downloadError;
+      }
     }
+
+    logger.info('Sending OCR request', {
+      correlationId: payload.correlation_id,
+      url,
+      hasBase64: !!ocrBody.image_base64,
+      hasImageUrl: !!ocrBody.image_url,
+    });
 
     const response = await axios.post<OcrScanResponse>(url, ocrBody, {
       timeout: OCR_TIMEOUT_MS,
