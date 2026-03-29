@@ -141,6 +141,7 @@ export function createWebhookRouter(redis: Redis, dbPool: Pool): Router {
       const messageBody = body.Body || '';
       // const numMedia = parseInt(body.NumMedia || '0', 10);
       const mediaUrl = body.MediaUrl0;
+      const mediaContentType = body.MediaContentType0;
 
       // Check idempotency (prevent duplicate processing)
       const idempotencyKey = `idempotent:${messageSid}`;
@@ -172,6 +173,7 @@ export function createWebhookRouter(redis: Redis, dbPool: Pool): Router {
         messageBody,
         messageSid,
         mediaUrl,
+        mediaContentType,
         user,
         currentState: currentState.state,
         correlationId,
