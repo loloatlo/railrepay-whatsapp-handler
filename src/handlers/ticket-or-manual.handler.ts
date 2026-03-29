@@ -78,7 +78,7 @@ export async function ticketOrManualHandler(ctx: HandlerContext): Promise<Handle
       const ocrResult = await callOcrService(ocrPayload, ocrBaseUrl);
 
       // Map OCR extracted_fields to standard stateData field names
-      const ef = ocrResult.extracted_fields;
+      const ef = ocrResult.extracted_fields ?? {};
       const stateData: Record<string, any> = {
         scan_id: ocrResult.scan_id,
         ocr_confidence: ocrResult.confidence,
