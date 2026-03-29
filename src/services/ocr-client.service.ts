@@ -9,8 +9,6 @@
  */
 
 import axios from 'axios';
-import https from 'https';
-import http from 'http';
 import { createLogger } from '@railrepay/winston-logger';
 
 const DEFAULT_OCR_URL = 'http://railrepay-ocr.railway.internal:3010';
@@ -18,44 +16,20 @@ const OCR_TIMEOUT_MS = 10000;
 
 /**
  * Download media from a Twilio URL using Basic Auth.
- * Uses native http/https modules (not axios) to avoid mock conflicts in tests.
+ * Uses axios.get with auth credentials. The TWILIO_ACCOUNT_SID guard in
+ * callOcrService ensures this is never called in tests (env var not set).
  */
 async function downloadTwilioMedia(mediaUrl: string): Promise<string> {
   const twilioSid = process.env.TWILIO_ACCOUNT_SID || '';
   const twilioToken = process.env.TWILIO_AUTH_TOKEN || '';
 
-  return new Promise((resolve, reject) => {
-    const parsedUrl = new URL(mediaUrl);
-    const transport = parsedUrl.protocol === 'https:' ? https : http;
-    const auth = twilioSid && twilioToken ? `${twilioSid}:${twilioToken}` : undefined;
-
-    const req = transport.get(
-      { ...parsedUrl, auth, timeout: OCR_TIMEOUT_MS } as any,
-      (res) => {
-        // Follow redirects (Twilio may 302)
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          downloadTwilioMedia(res.headers.location).then(resolve, reject);
-          return;
-        }
-
-        if (res.statusCode && res.statusCode >= 400) {
-          reject(new Error(`Twilio media download failed: HTTP ${res.statusCode}`));
-          return;
-        }
-
-        const chunks: Buffer[] = [];
-        res.on('data', (chunk: Buffer) => chunks.push(chunk));
-        res.on('end', () => resolve(Buffer.concat(chunks).toString('base64')));
-        res.on('error', reject);
-      }
-    );
-
-    req.on('error', reject);
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Twilio media download timed out'));
-    });
+  const response = await axios.get(mediaUrl, {
+    responseType: 'arraybuffer',
+    timeout: OCR_TIMEOUT_MS,
+    ...(twilioSid && twilioToken ? { auth: { username: twilioSid, password: twilioToken } } : {}),
   });
+
+  return Buffer.from(response.data).toString('base64');
 }
 
 export interface OcrScanPayload {
