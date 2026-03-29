@@ -65,12 +65,14 @@ describe('TD-WHATSAPP-058: FSMState enum — new ticket collection states', () =
     });
   });
 
-  describe('AC-1: Total FSM state count is now 16', () => {
-    it('should have exactly 16 FSM states after adding ticket collection states', () => {
-      // AC-1: Verifies all 3 new states were added (13 existing + 3 new = 16)
+  describe('AC-1: Total FSM state count is now 16 (updated to 18 by TD-WHATSAPP-062-S1)', () => {
+    it('should have exactly 18 FSM states after adding ticket collection states (TD-058) and OCR states (TD-062-S1)', () => {
+      // AC-1: Verifies all 3 new states were added by TD-058 (13 existing + 3 new = 16)
+      // TD-WHATSAPP-062-S1 (BL-167) subsequently added AWAITING_TICKET_OR_MANUAL and AWAITING_OCR_REVIEW,
+      // bringing the total to 18.
       // Counts unique string values in the enum
       const stateValues = Object.values(FSMState);
-      expect(stateValues).toHaveLength(16);
+      expect(stateValues).toHaveLength(18);
     });
 
     it('should include all original 13 states unchanged', () => {

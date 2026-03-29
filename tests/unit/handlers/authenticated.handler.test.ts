@@ -5,10 +5,15 @@
  * Per ADR-014: These tests define the behavior
  *
  * Test cases:
- * 1. "DELAY" or "delay" or "claim" → Send JOURNEY_WHEN, transition to AWAITING_JOURNEY_DATE
+ * 1. "DELAY" or "delay" or "claim" → Send ticket-or-manual prompt, transition to AWAITING_TICKET_OR_MANUAL
+ *    (BL-167 / TD-WHATSAPP-062-S1 AC-1: changed from AWAITING_JOURNEY_DATE to AWAITING_TICKET_OR_MANUAL)
  * 2. "STATUS" → Send status check message (placeholder for now)
  * 3. "HELP" → Send help menu
  * 4. "LOGOUT" → Delete state, send goodbye
+ *
+ * AC-1 UPDATE (BL-167): DELAY/CLAIM now transitions to AWAITING_TICKET_OR_MANUAL, not AWAITING_JOURNEY_DATE.
+ * The old tests expected FSMState.AWAITING_JOURNEY_DATE — those assertions have been updated to
+ * FSMState.AWAITING_TICKET_OR_MANUAL to reflect the new branching flow.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -42,51 +47,45 @@ describe('Authenticated Handler', () => {
 
   describe('Start delay claim flow', () => {
     it('should handle "DELAY" command', async () => {
-      // Arrange
+      // AC-1 (BL-167): DELAY → AWAITING_TICKET_OR_MANUAL (not AWAITING_JOURNEY_DATE)
+      // Prompt must mention photo/ticket option and MANUAL keyword
       mockContext.messageBody = 'DELAY';
 
-      // Act
       const result = await authenticatedHandler(mockContext);
 
-      // Assert
-      expect(result.response).toContain('when');
-      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_DATE);
+      expect(result.response).toMatch(/photo|ticket|MANUAL/i);
+      expect(result.nextState).toBe(FSMState.AWAITING_TICKET_OR_MANUAL);
     });
 
     it('should handle "delay" (lowercase)', async () => {
-      // Arrange
+      // AC-1 (BL-167): Case-insensitive — lowercase "delay" also goes to AWAITING_TICKET_OR_MANUAL
       mockContext.messageBody = 'delay';
 
-      // Act
       const result = await authenticatedHandler(mockContext);
 
-      // Assert
-      expect(result.response).toContain('when');
-      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_DATE);
+      expect(result.response).toMatch(/photo|ticket|MANUAL/i);
+      expect(result.nextState).toBe(FSMState.AWAITING_TICKET_OR_MANUAL);
     });
 
     it('should handle "claim" as alias for DELAY', async () => {
-      // Arrange
+      // AC-1 (BL-167): "claim" alias also routes to AWAITING_TICKET_OR_MANUAL
       mockContext.messageBody = 'claim';
 
-      // Act
       const result = await authenticatedHandler(mockContext);
 
-      // Assert
-      expect(result.response).toContain('when');
-      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_DATE);
+      expect(result.response).toMatch(/photo|ticket|MANUAL/i);
+      expect(result.nextState).toBe(FSMState.AWAITING_TICKET_OR_MANUAL);
     });
 
-    it('should provide date format examples', async () => {
-      // Arrange
+    it('should prompt the user to send a ticket photo or type MANUAL', async () => {
+      // AC-1 (BL-167): Prompt text must convey both options:
+      // "Send a photo of your ticket to get started quickly, or type MANUAL to enter your journey details."
       mockContext.messageBody = 'DELAY';
 
-      // Act
       const result = await authenticatedHandler(mockContext);
 
-      // Assert
-      expect(result.response).toContain('today');
-      expect(result.response).toContain('yesterday');
+      expect(result.response).toContain('MANUAL');
+      expect(result.response).toMatch(/photo|ticket/i);
     });
   });
 

@@ -5,7 +5,8 @@
  * Per ADR-014: Implementation written AFTER tests
  *
  * BEHAVIOR:
- * - "DELAY" or "delay" or "claim" → Send JOURNEY_WHEN, transition to AWAITING_JOURNEY_DATE
+ * - "DELAY" or "delay" or "claim" → Send ticket-or-manual prompt, transition to AWAITING_TICKET_OR_MANUAL
+ *   (BL-167 AC-1: changed from AWAITING_JOURNEY_DATE)
  * - "STATUS" → Send status check message (placeholder for now)
  * - "HELP" → Send help menu
  * - "LOGOUT" → Delete state, send goodbye
@@ -22,20 +23,13 @@ export async function authenticatedHandler(ctx: HandlerContext): Promise<Handler
   const input = ctx.messageBody.trim().toUpperCase();
 
   // Start delay claim flow
+  // BL-167 AC-1: transitions to AWAITING_TICKET_OR_MANUAL (not AWAITING_JOURNEY_DATE)
   if (input === 'DELAY' || input === 'CLAIM') {
     return {
       response: `Great! Let's report your delayed journey.
 
-When did you travel? (when was your journey?)
-
-You can say:
-• "today"
-• "yesterday"
-• "15 Nov"
-• "15/11/2024"
-
-(Claims must be made within 90 days of travel)`,
-      nextState: FSMState.AWAITING_JOURNEY_DATE,
+Send a photo of your ticket to get started quickly, or type MANUAL to enter your journey details.`,
+      nextState: FSMState.AWAITING_TICKET_OR_MANUAL,
     };
   }
 

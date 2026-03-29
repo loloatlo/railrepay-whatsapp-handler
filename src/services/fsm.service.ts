@@ -31,6 +31,8 @@ export enum FSMState {
   AWAITING_TERMS = 'AWAITING_TERMS', // Terms sent, awaiting YES/NO
   AWAITING_OTP = 'AWAITING_OTP', // OTP sent via Twilio Verify, awaiting code
   AUTHENTICATED = 'AUTHENTICATED', // User verified, main menu
+  AWAITING_TICKET_OR_MANUAL = 'AWAITING_TICKET_OR_MANUAL', // BL-167 AC-1: Awaiting ticket photo or MANUAL keyword
+  AWAITING_OCR_REVIEW = 'AWAITING_OCR_REVIEW', // BL-167 AC-10: OCR result presented, awaiting YES/NO confirmation
   AWAITING_JOURNEY_DATE = 'AWAITING_JOURNEY_DATE', // Awaiting journey date input
   AWAITING_JOURNEY_STATIONS = 'AWAITING_JOURNEY_STATIONS', // Awaiting FROM/TO stations
   AWAITING_JOURNEY_TIME = 'AWAITING_JOURNEY_TIME', // Awaiting journey time

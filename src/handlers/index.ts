@@ -116,12 +116,16 @@ export async function initializeHandlers(): Promise<void> {
   const { ticketPriceHandler } = await import('./ticket-price.handler.js');
   const { ticketClassHandler } = await import('./ticket-class.handler.js');
   const { ticketTypeHandler } = await import('./ticket-type.handler.js');
+  const { ticketOrManualHandler } = await import('./ticket-or-manual.handler.js');
+  const { ocrReviewHandler } = await import('./ocr-review.handler.js');
   const { errorHandler } = await import('./error.handler.js');
 
   registerHandler(FSMState.START, startHandler);
   registerHandler(FSMState.AWAITING_TERMS, termsHandler);
   registerHandler(FSMState.AWAITING_OTP, otpHandler);
   registerHandler(FSMState.AUTHENTICATED, authenticatedHandler);
+  registerHandler(FSMState.AWAITING_TICKET_OR_MANUAL, ticketOrManualHandler);
+  registerHandler(FSMState.AWAITING_OCR_REVIEW, ocrReviewHandler);
   registerHandler(FSMState.AWAITING_JOURNEY_DATE, journeyDateHandler);
   registerHandler(FSMState.AWAITING_JOURNEY_STATIONS, journeyStationsHandler);
   registerHandler(FSMState.AWAITING_JOURNEY_TIME, journeyTimeHandler);
