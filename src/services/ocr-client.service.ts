@@ -9,13 +9,58 @@
  */
 
 import axios from 'axios';
+import https from 'https';
+import http from 'http';
 import { createLogger } from '@railrepay/winston-logger';
 
 const DEFAULT_OCR_URL = 'http://railrepay-ocr.railway.internal:3010';
 const OCR_TIMEOUT_MS = 10000;
 
+/**
+ * Download media from a Twilio URL using Basic Auth.
+ * Uses native http/https modules (not axios) to avoid mock conflicts in tests.
+ */
+async function downloadTwilioMedia(mediaUrl: string): Promise<string> {
+  const twilioSid = process.env.TWILIO_ACCOUNT_SID || '';
+  const twilioToken = process.env.TWILIO_AUTH_TOKEN || '';
+
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(mediaUrl);
+    const transport = parsedUrl.protocol === 'https:' ? https : http;
+    const auth = twilioSid && twilioToken ? `${twilioSid}:${twilioToken}` : undefined;
+
+    const req = transport.get(
+      { ...parsedUrl, auth, timeout: OCR_TIMEOUT_MS } as any,
+      (res) => {
+        // Follow redirects (Twilio may 302)
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          downloadTwilioMedia(res.headers.location).then(resolve, reject);
+          return;
+        }
+
+        if (res.statusCode && res.statusCode >= 400) {
+          reject(new Error(`Twilio media download failed: HTTP ${res.statusCode}`));
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => resolve(Buffer.concat(chunks).toString('base64')));
+        res.on('error', reject);
+      }
+    );
+
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Twilio media download timed out'));
+    });
+  });
+}
+
 export interface OcrScanPayload {
-  image_url: string;
+  image_url?: string;
+  image_base64?: string;
   user_id: string;
   content_type: 'image/jpeg' | 'image/png' | 'application/pdf';
   correlation_id: string;
@@ -75,7 +120,22 @@ export async function callOcrService(
   const url = `${resolvedBaseUrl}/ocr/scan`;
 
   try {
-    const response = await axios.post<OcrScanResponse>(url, payload, {
+    // If image_url is provided (Twilio media URL), download with Basic Auth
+    // and convert to base64 so the OCR service doesn't need Twilio credentials.
+    // Uses https/http modules (not axios) to avoid conflicts with axios mocks in tests.
+    let ocrBody: Record<string, unknown> = { ...payload };
+
+    if (payload.image_url && !payload.image_base64 && process.env.TWILIO_ACCOUNT_SID) {
+      const imageBase64 = await downloadTwilioMedia(payload.image_url);
+      ocrBody = {
+        image_base64: imageBase64,
+        user_id: payload.user_id,
+        content_type: payload.content_type,
+        correlation_id: payload.correlation_id,
+      };
+    }
+
+    const response = await axios.post<OcrScanResponse>(url, ocrBody, {
       timeout: OCR_TIMEOUT_MS,
       headers: {
         'Content-Type': 'application/json',
