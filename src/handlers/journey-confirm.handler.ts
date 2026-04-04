@@ -34,23 +34,38 @@ export async function journeyConfirmHandler(ctx: HandlerContext): Promise<Handle
       };
     }
 
+    const hasTicketFromOcr = !!ctx.stateData?.scan_id;
+
     logger.info('Journey confirmed by user', {
       correlationId: ctx.correlationId,
       journeyId,
       isDirect,
       legCount: matchedRoute.legs?.length,
+      hasTicketFromOcr,
     });
+
+    const confirmedStateData = {
+      ...ctx.stateData,
+      confirmedRoute: matchedRoute,
+      journeyConfirmed: true,
+    };
+
+    // If the user entered via OCR ticket upload, the ticket is already on file
+    // — skip the upload step and go straight to submission
+    if (hasTicketFromOcr) {
+      return {
+        response: `Great! Your journey is confirmed and your ticket is already on file. Journey submitted successfully! We'll monitor this service and notify you of any delays.`,
+        nextState: FSMState.AUTHENTICATED,
+        stateData: confirmedStateData,
+      };
+    }
 
     return {
       response: `Great! Your journey is confirmed.
 
 Now please upload a photo of your ticket.`,
       nextState: FSMState.AWAITING_TICKET_UPLOAD,
-      stateData: {
-        ...ctx.stateData,
-        confirmedRoute: matchedRoute,
-        journeyConfirmed: true,
-      },
+      stateData: confirmedStateData,
     };
   }
 
