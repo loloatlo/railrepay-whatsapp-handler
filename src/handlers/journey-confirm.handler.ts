@@ -53,8 +53,16 @@ export async function journeyConfirmHandler(ctx: HandlerContext): Promise<Handle
     // If the user entered via OCR ticket upload, the ticket is already on file
     // — skip the upload step and go straight to submission
     if (hasTicketFromOcr) {
+      const travelDate = ctx.stateData?.travelDate;
+      const today = new Date().toISOString().split('T')[0];
+      const isHistoric = travelDate && travelDate < today;
+
+      const responseMsg = isHistoric
+        ? `Great! Your journey is confirmed and your ticket is already on file. Journey submitted successfully! We're now checking if this service was delayed and whether you're eligible for compensation. We'll message you shortly with the result.`
+        : `Great! Your journey is confirmed and your ticket is already on file. Journey submitted successfully! We'll monitor this service and notify you of any delays.`;
+
       return {
-        response: `Great! Your journey is confirmed and your ticket is already on file. Journey submitted successfully! We'll monitor this service and notify you of any delays.`,
+        response: responseMsg,
         nextState: FSMState.AUTHENTICATED,
         stateData: confirmedStateData,
       };
