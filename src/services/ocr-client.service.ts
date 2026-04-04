@@ -149,6 +149,7 @@ export async function callOcrService(
       errorMessage: error?.message,
       statusCode: error?.response?.status,
       errorCode: error?.code,
+      responseBody: error?.response?.data ? JSON.stringify(error.response.data).substring(0, 500) : undefined,
     });
 
     throw error;
