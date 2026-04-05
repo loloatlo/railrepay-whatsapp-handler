@@ -14,6 +14,7 @@ import type { HandlerContext, HandlerResult } from './index.js';
 import { FSMState } from '../services/fsm.service.js';
 import type { OutboxEvent } from '../db/types.js';
 import { createLogger } from '@railrepay/winston-logger';
+import { stripGtfsPrefix } from '../utils/strip-gtfs-prefix.js';
 import { buildAlternativesResponse } from '../utils/buildAlternativesResponse.js';
 
 const logger = createLogger({ serviceName: 'whatsapp-handler' });
@@ -67,10 +68,6 @@ export async function journeyConfirmHandler(ctx: HandlerContext): Promise<Handle
       const journeyIdForEvent = ctx.stateData?.journeyId || randomUUID();
       const firstLeg = matchedRoute.legs?.[0];
       const lastLeg = matchedRoute.legs?.[matchedRoute.legs.length - 1];
-
-      // Strip GTFS feed prefix (e.g. "1:AW" → "AW") from operator/TOC codes
-      const stripGtfsPrefix = (code: string | undefined): string | undefined =>
-        code?.replace(/^\d+:/, '');
 
       const segments = (matchedRoute.legs || []).map((leg: any, index: number) => ({
         sequence: index + 1,
