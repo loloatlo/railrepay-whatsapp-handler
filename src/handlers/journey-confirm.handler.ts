@@ -79,6 +79,22 @@ export async function journeyConfirmHandler(ctx: HandlerContext): Promise<Handle
         rid: leg.tripId || null,
       }));
 
+      // AC-6 (ADR-021): Compute connectionThresholdMinutes for multi-leg journeys.
+      // For single-leg journeys (legs.length < 2), the field is null (no connection exists).
+      // For multi-leg journeys, threshold = layover(leg[0]→leg[1]) - PLATFORM_DISCOUNT_MINUTES.
+      // AC-7: PLATFORM_DISCOUNT_MINUTES is read at call time (not module load) so tests can control it.
+      const legs = matchedRoute.legs || [];
+      let connectionThresholdMinutes: number | null = null;
+      if (legs.length >= 2) {
+        const discountRaw = parseInt(process.env.PLATFORM_DISCOUNT_MINUTES || '', 10);
+        const discount = isNaN(discountRaw) ? 3 : discountRaw;
+        const layoverMs =
+          Date.parse(`${travelDate}T${legs[1].departure}:00Z`) -
+          Date.parse(`${travelDate}T${legs[0].arrival}:00Z`);
+        const layoverMinutes = layoverMs / 60000;
+        connectionThresholdMinutes = layoverMinutes - discount;
+      }
+
       const journeyConfirmedPayload: Record<string, any> = {
         journey_id: journeyIdForEvent,
         user_id: ctx.user?.id,
@@ -95,6 +111,7 @@ export async function journeyConfirmHandler(ctx: HandlerContext): Promise<Handle
         ticket_fare_pence: ctx.stateData?.farePence || null,
         ticket_class: ctx.stateData?.ticketClass || null,
         ticket_type: ctx.stateData?.ticketType || null,
+        connectionThresholdMinutes,
       };
 
       const journeyEvent: OutboxEvent = {
