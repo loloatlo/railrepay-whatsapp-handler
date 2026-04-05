@@ -68,13 +68,17 @@ export async function journeyConfirmHandler(ctx: HandlerContext): Promise<Handle
       const firstLeg = matchedRoute.legs?.[0];
       const lastLeg = matchedRoute.legs?.[matchedRoute.legs.length - 1];
 
+      // Strip GTFS feed prefix (e.g. "1:AW" → "AW") from operator/TOC codes
+      const stripGtfsPrefix = (code: string | undefined): string | undefined =>
+        code?.replace(/^\d+:/, '');
+
       const segments = (matchedRoute.legs || []).map((leg: any, index: number) => ({
         sequence: index + 1,
         origin_crs: leg.from,
         destination_crs: leg.to,
         scheduled_departure: travelDate && leg.departure ? `${travelDate}T${leg.departure}:00Z` : leg.departure,
         scheduled_arrival: travelDate && leg.arrival ? `${travelDate}T${leg.arrival}:00Z` : leg.arrival,
-        toc_code: leg.operator,
+        toc_code: stripGtfsPrefix(leg.operator),
         rid: leg.tripId || null,
       }));
 
@@ -86,11 +90,14 @@ export async function journeyConfirmHandler(ctx: HandlerContext): Promise<Handle
         departure_datetime: travelDate && firstLeg?.departure ? `${travelDate}T${firstLeg.departure}:00Z` : firstLeg?.departure,
         arrival_datetime: travelDate && lastLeg?.arrival ? `${travelDate}T${lastLeg.arrival}:00Z` : lastLeg?.arrival,
         journey_type: 'single',
-        toc_code: firstLeg?.operator,
+        toc_code: stripGtfsPrefix(firstLeg?.operator),
         segments,
         correlation_id: ctx.correlationId,
         scan_id: ctx.stateData?.scan_id,
         image_gcs_path: ctx.stateData?.image_gcs_path,
+        ticket_fare_pence: ctx.stateData?.farePence || null,
+        ticket_class: ctx.stateData?.ticketClass || null,
+        ticket_type: ctx.stateData?.ticketType || null,
       };
 
       const journeyEvent: OutboxEvent = {
