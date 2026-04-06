@@ -117,14 +117,15 @@ function tryParseRelative(input: string): Date | null {
 }
 
 function tryParseDayMonth(input: string): Date | null {
-  // Match formats like "15 Nov" or "15 November"
-  const match = input.match(/^(\d{1,2})\s+([a-z]+)$/);
+  // Match formats like "15 Nov", "15 November", or "15 Nov 2024"
+  const match = input.match(/^(\d{1,2})\s+([a-z]+)(?:\s+(\d{4}))?$/);
   if (!match) {
     return null;
   }
 
   const day = parseInt(match[1], 10);
   const monthStr = match[2];
+  const explicitYear = match[3] ? parseInt(match[3], 10) : null;
 
   let monthIndex = -1;
 
@@ -140,18 +141,19 @@ function tryParseDayMonth(input: string): Date | null {
     return null;
   }
 
-  // Assume current year first
+  // Use explicit year if provided, otherwise assume current year
   const now = new Date();
   const currentYear = now.getFullYear();
-  let date = new Date(currentYear, monthIndex, day, 0, 0, 0, 0);
+  const year = explicitYear ?? currentYear;
+  let date = new Date(year, monthIndex, day, 0, 0, 0, 0);
 
   // If the date is invalid (e.g., Feb 30), return null
   if (date.getDate() !== day || date.getMonth() !== monthIndex) {
     return null;
   }
 
-  // If the date is in the future, try previous year
-  if (date > now) {
+  // If no explicit year and the date is in the future, try previous year
+  if (!explicitYear && date > now) {
     date = new Date(currentYear - 1, monthIndex, day, 0, 0, 0, 0);
     if (date.getDate() !== day || date.getMonth() !== monthIndex) {
       return null;

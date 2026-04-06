@@ -109,8 +109,8 @@ describe('TD-WHATSAPP-056: Journey Confirm Handler - Single Route NO Path', () =
       expect(result.response).toContain('only');
       expect(result.response).toContain('route');
 
-      // Assert: Stay in AWAITING_JOURNEY_CONFIRM (re-prompt YES/NO)
-      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_CONFIRM);
+      // Assert: Transition to AWAITING_JOURNEY_TIME so user can try a different time
+      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_TIME);
 
       // Assert: Should NOT transition to AWAITING_ROUTING_ALTERNATIVE
       expect(result.nextState).not.toBe(FSMState.AWAITING_ROUTING_ALTERNATIVE);
@@ -385,8 +385,8 @@ describe('TD-WHATSAPP-056: Journey Confirm Handler - Single Route NO Path', () =
 
       const result = await journeyConfirmHandler(mockContext);
 
-      // Assert: Stay in AWAITING_JOURNEY_CONFIRM (single-route fallback)
-      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_CONFIRM);
+      // Assert: Transition to AWAITING_JOURNEY_TIME (single-route fallback)
+      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_TIME);
       expect(result.response).toContain('only');
     });
 
@@ -401,8 +401,8 @@ describe('TD-WHATSAPP-056: Journey Confirm Handler - Single Route NO Path', () =
 
       const result = await journeyConfirmHandler(mockContext);
 
-      // Assert: Stay in AWAITING_JOURNEY_CONFIRM
-      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_CONFIRM);
+      // Assert: Transition to AWAITING_JOURNEY_TIME
+      expect(result.nextState).toBe(FSMState.AWAITING_JOURNEY_TIME);
       expect(result.response).toContain('only');
     });
   });

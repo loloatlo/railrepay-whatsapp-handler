@@ -38,7 +38,36 @@ Please try again with a valid date like:
 
   // Valid date - store and move to next step
   // Generate journeyId here so it's available for all subsequent handlers
-  const journeyId = crypto.randomUUID();
+  const journeyId = ctx.stateData?.journeyId || crypto.randomUUID();
+
+  const updatedStateData = {
+    ...ctx.stateData,
+    travelDate: result.date.toISOString().split('T')[0], // YYYY-MM-DD format for API
+    journeyId,
+  };
+
+  // If stations are already in stateData (e.g. from OCR), skip to time entry
+  const origin = ctx.stateData?.origin;
+  const destination = ctx.stateData?.destination;
+  if (origin && destination) {
+    const displayOrigin = ctx.stateData?.originName || origin;
+    const displayDestination = ctx.stateData?.destinationName || destination;
+    return {
+      response: `Got it! Journey date: ${result.date.toLocaleDateString('en-GB')}
+
+Route: ${displayOrigin} → ${displayDestination}
+
+What time did your train depart?
+
+You can say:
+• "14:30"
+• "2:30pm"
+• "1430"
+• "2pm"`,
+      nextState: FSMState.AWAITING_JOURNEY_TIME,
+      stateData: updatedStateData,
+    };
+  }
 
   return {
     response: `Got it! Journey date: ${result.date.toLocaleDateString('en-GB')}
@@ -50,10 +79,6 @@ For example:
 • "Manchester to London"
 • "Brighton to Victoria"`,
     nextState: FSMState.AWAITING_JOURNEY_STATIONS,
-    stateData: {
-      ...ctx.stateData,
-      travelDate: result.date.toISOString().split('T')[0], // YYYY-MM-DD format for API
-      journeyId,
-    },
+    stateData: updatedStateData,
   };
 }

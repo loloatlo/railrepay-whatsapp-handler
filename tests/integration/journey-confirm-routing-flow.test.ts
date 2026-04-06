@@ -290,8 +290,8 @@ describe('Journey Flow Integration: Time → Confirm → Ticket Upload', () => {
 
       const confirmResult = await journeyConfirmHandler(confirmContext);
 
-      // AC-1: Should stay in AWAITING_JOURNEY_CONFIRM (single-route scenario)
-      expect(confirmResult.nextState).toBe(FSMState.AWAITING_JOURNEY_CONFIRM);
+      // AC-1: Should transition to AWAITING_JOURNEY_TIME so user can try a different time
+      expect(confirmResult.nextState).toBe(FSMState.AWAITING_JOURNEY_TIME);
       expect(confirmResult.response).toContain('only');
 
       // State data should be preserved (origin, destination, etc.)

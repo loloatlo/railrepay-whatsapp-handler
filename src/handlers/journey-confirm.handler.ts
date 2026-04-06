@@ -69,21 +69,21 @@ export async function journeyConfirmHandler(ctx: HandlerContext): Promise<Handle
       const firstLeg = matchedRoute.legs?.[0];
       const lastLeg = matchedRoute.legs?.[matchedRoute.legs.length - 1];
 
-      const segments = (matchedRoute.legs || []).map((leg: any, index: number) => ({
+      const legs = matchedRoute.legs || [];
+      const segments = legs.map((leg: any, index: number) => ({
         sequence: index + 1,
-        origin_crs: leg.from,
-        destination_crs: leg.to,
+        origin_crs: index === 0 ? (ctx.stateData?.origin || leg.from) : leg.from,
+        destination_crs: index === legs.length - 1 ? (ctx.stateData?.destination || leg.to) : leg.to,
         scheduled_departure: travelDate && leg.departure ? `${travelDate}T${leg.departure}:00Z` : leg.departure,
         scheduled_arrival: travelDate && leg.arrival ? `${travelDate}T${leg.arrival}:00Z` : leg.arrival,
         toc_code: stripGtfsPrefix(leg.operator),
-        rid: leg.tripId || null,
+        rid: stripGtfsPrefix(leg.tripId) || null,
       }));
 
       // AC-6 (ADR-021): Compute connectionThresholdMinutes for multi-leg journeys.
       // For single-leg journeys (legs.length < 2), the field is null (no connection exists).
       // For multi-leg journeys, threshold = layover(leg[0]→leg[1]) - PLATFORM_DISCOUNT_MINUTES.
       // AC-7: PLATFORM_DISCOUNT_MINUTES is read at call time (not module load) so tests can control it.
-      const legs = matchedRoute.legs || [];
       let connectionThresholdMinutes: number | null = null;
       if (legs.length >= 2) {
         const discountRaw = parseInt(process.env.PLATFORM_DISCOUNT_MINUTES || '', 10);
@@ -155,7 +155,7 @@ Now please upload a photo of your ticket.`,
         response: `This appears to be the only available route for your journey at this time. You may want to try a different departure time.
 
 Please reply with a different time (e.g., 14:30), or start over by sending a new date.`,
-        nextState: FSMState.AWAITING_JOURNEY_CONFIRM, // Stay in same state
+        nextState: FSMState.AWAITING_JOURNEY_TIME, // Let user enter a different time
         stateData: ctx.stateData, // Preserve all fields
       };
     }
@@ -188,5 +188,6 @@ Please reply with a different time (e.g., 14:30), or start over by sending a new
   return {
     response: `Please reply YES to confirm your journey, or NO to see alternatives.`,
     nextState: FSMState.AWAITING_JOURNEY_CONFIRM,
+    stateData: ctx.stateData,
   };
 }
