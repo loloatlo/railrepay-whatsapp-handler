@@ -65,9 +65,10 @@ export interface EvaluationCompletedPayload {
   journey_id: string;
   user_id: string;
   eligible: boolean;
-  scheme: string;
+  scheme?: string; // BL-178: optional when eligible is false (no-delay events omit scheme)
   compensation_pence: number;
   delay_minutes: number; // BL-151 AC-7: delay duration for user-friendly messages
+  reason?: string; // BL-178: 'no_delay_detected' for no-delay events
   correlation_id?: string;
 }
 
@@ -168,9 +169,15 @@ export class EvaluationCompletedHandler {
       }
 
       // AC-4/AC-5: Build message based on eligibility
-      const messageBody = typedPayload.eligible
-        ? this.buildEligibleMessage(typedPayload)
-        : this.buildIneligibleMessage(typedPayload);
+      // BL-178: Route no-delay events to a distinct message
+      let messageBody: string;
+      if (typedPayload.eligible) {
+        messageBody = this.buildEligibleMessage(typedPayload);
+      } else if ((typedPayload as any).reason === 'no_delay_detected') {
+        messageBody = this.buildNoDelayMessage(typedPayload);
+      } else {
+        messageBody = this.buildIneligibleMessage(typedPayload);
+      }
 
       // AC-6: Send via Twilio REST API
       await this.twilioMessaging.sendWhatsAppMessage(user.phone_number, messageBody);
@@ -221,7 +228,17 @@ export class EvaluationCompletedHandler {
   }
 
   /**
+   * BL-178/AC-3: Build no-delay message for reason: no_delay_detected
+   * Message must convey no delay was detected (distinct from ineligible message)
+   * Must NOT include "delayed by 0 minutes" (misleading)
+   */
+  private buildNoDelayMessage(_payload: EvaluationCompletedPayload): string {
+    return `We've reviewed your journey. No delay was detected on this occasion, so you are not eligible for compensation.\n\nIf you believe your train was delayed, please contact your train operator directly.`;
+  }
+
+  /**
    * Validate incoming payload
+   * BL-178: scheme is only required when eligible is true
    */
   private validatePayload(payload: EvaluationCompletedPayload | Record<string, unknown>): void {
     if (!payload.journey_id) {
@@ -233,7 +250,7 @@ export class EvaluationCompletedHandler {
     if (payload.eligible === undefined || payload.eligible === null) {
       throw new Error('Validation error: eligible is required');
     }
-    if (!payload.scheme) {
+    if (payload.eligible && !payload.scheme) {
       throw new Error('Validation error: scheme is required');
     }
   }

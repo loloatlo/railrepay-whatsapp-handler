@@ -3,6 +3,7 @@
  *
  * Phase TD-1: Failing tests for BL-148 / TD-WHATSAPP-060
  * Updated for BL-151 / TD-WHATSAPP-061: Improve notification messages
+ * Updated for BL-178 (TD-1): whatsapp-handler must accept evaluation.completed for no-delay events
  *
  * BL-148 ACs (preserved):
  * AC-3: On receiving evaluation.completed event, look up user phone_number by user_id
@@ -18,6 +19,12 @@
  * AC-5: Ineligible message does NOT include scheme name
  * AC-6: Ineligible message includes delay minutes
  * AC-7: EvaluationCompletedPayload includes delay_minutes: number
+ *
+ * BL-178 ACs (new):
+ * AC-3: whatsapp-handler consumes evaluation.completed and sends notification for no-delay journeys
+ * AC-4: Existing eligible/ineligible (with scheme) messages are unaffected (regression)
+ * Validation relaxation: eligible: false events WITHOUT scheme field must be accepted
+ * Message content: reason: 'no_delay_detected' triggers no-delay-specific message
  *
  * Pattern reference: evaluation-coordinator/src/kafka/delay-detected-handler.ts
  */
@@ -475,6 +482,173 @@ describe('EvaluationCompletedHandler', () => {
           correlation_id: validEligiblePayload.correlation_id,
         })
       );
+    });
+  });
+
+  // ===========================================================================
+  // BL-178: whatsapp-handler must accept evaluation.completed for no-delay events
+  // ===========================================================================
+  describe('BL-178: no-delay evaluation.completed events', () => {
+    // Payload representing an evaluation.completed from a delay.not-detected flow.
+    // Key difference: no 'scheme' field, is_eligible: false, reason: 'no_delay_detected'.
+    const noDelayPayload = {
+      journey_id: '323e4567-e89b-12d3-a456-426614174000',
+      user_id: '123e4567-e89b-12d3-a456-426614174001',
+      eligible: false,
+      // NO scheme field -- this is the validation relaxation required by BL-178
+      is_eligible: false,
+      reason: 'no_delay_detected',
+      compensation_pence: 0,
+      delay_minutes: 0,
+      correlation_id: '323e4567-e89b-12d3-a456-426614174099',
+    };
+
+    // BL-178/AC-3: Validation must be relaxed — eligible: false without scheme must not throw
+    it('BL-178/AC-3: should accept eligible: false payload WITHOUT scheme field', async () => {
+      // This will FAIL until Blake relaxes the validatePayload guard in EvaluationCompletedHandler.
+      // Current code throws: 'Validation error: scheme is required' for any payload missing scheme.
+      const payloadWithoutScheme = {
+        journey_id: '323e4567-e89b-12d3-a456-426614174000',
+        user_id: '123e4567-e89b-12d3-a456-426614174001',
+        eligible: false,
+        // scheme is intentionally absent
+        compensation_pence: 0,
+        delay_minutes: 0,
+        correlation_id: '323e4567-e89b-12d3-a456-426614174099',
+      };
+
+      // Must NOT throw — schema is optional when eligible is false
+      await expect(handler.handle(payloadWithoutScheme)).resolves.not.toThrow();
+    });
+
+    // BL-178/AC-3: A WhatsApp notification MUST still be sent for no-delay events
+    it('BL-178/AC-3: should send a WhatsApp notification for no-delay evaluation.completed event', async () => {
+      const payloadWithoutScheme = {
+        journey_id: '323e4567-e89b-12d3-a456-426614174001',
+        user_id: '123e4567-e89b-12d3-a456-426614174001',
+        eligible: false,
+        compensation_pence: 0,
+        delay_minutes: 0,
+        correlation_id: '323e4567-e89b-12d3-a456-426614174098',
+      };
+
+      await handler.handle(payloadWithoutScheme);
+
+      expect(mockTwilioMessaging.sendWhatsAppMessage).toHaveBeenCalledTimes(1);
+    });
+
+    // BL-178/AC-3: When reason is 'no_delay_detected', message must convey no delay was found
+    it('BL-178/AC-3: should send no-delay-specific message when reason is no_delay_detected', async () => {
+      // This tests the MESSAGE CONTENT for no-delay events — it must be distinct from
+      // a general ineligible message (e.g. "no delay was detected" rather than "does not qualify")
+      const payloadNoDelay = {
+        journey_id: '323e4567-e89b-12d3-a456-426614174002',
+        user_id: '123e4567-e89b-12d3-a456-426614174001',
+        eligible: false,
+        reason: 'no_delay_detected',
+        compensation_pence: 0,
+        delay_minutes: 0,
+        correlation_id: '323e4567-e89b-12d3-a456-426614174097',
+      };
+
+      await handler.handle(payloadNoDelay);
+
+      const sentMessage = mockTwilioMessaging.sendWhatsAppMessage.mock.calls[0][1];
+      // The message must communicate absence of delay (not just ineligibility)
+      expect(sentMessage).toMatch(/no delay|delay was not detected|delay could not be confirmed/i);
+    });
+
+    // BL-178/AC-3: No-delay message must NOT claim a delay occurred
+    it('BL-178/AC-3: no-delay message must not include delay duration when delay_minutes is 0', async () => {
+      const payloadNoDelay = {
+        journey_id: '323e4567-e89b-12d3-a456-426614174003',
+        user_id: '123e4567-e89b-12d3-a456-426614174001',
+        eligible: false,
+        reason: 'no_delay_detected',
+        compensation_pence: 0,
+        delay_minutes: 0,
+        correlation_id: '323e4567-e89b-12d3-a456-426614174096',
+      };
+
+      await handler.handle(payloadNoDelay);
+
+      const sentMessage = mockTwilioMessaging.sendWhatsAppMessage.mock.calls[0][1];
+      // Must not say "delayed by 0 minutes" — that is misleading
+      expect(sentMessage).not.toMatch(/delayed by 0 minutes/i);
+    });
+
+    // BL-178/AC-4: Regression — existing eligible payload with scheme must still work
+    it('BL-178/AC-4: existing eligible payload with scheme must still be processed correctly', async () => {
+      // validEligiblePayload has scheme: 'DR30' — must continue to pass validation and send message
+      await handler.handle(validEligiblePayload);
+
+      expect(mockTwilioMessaging.sendWhatsAppMessage).toHaveBeenCalledTimes(1);
+      const sentMessage = mockTwilioMessaging.sendWhatsAppMessage.mock.calls[0][1];
+      expect(sentMessage).toMatch(/eligible/i);
+      expect(sentMessage).toContain('25.00');
+    });
+
+    // BL-178/AC-4: Regression — existing ineligible payload with scheme must still work
+    it('BL-178/AC-4: existing ineligible payload with scheme must still be processed correctly', async () => {
+      // validIneligiblePayload has scheme: 'DR30' — must continue to pass validation and send message
+      await handler.handle(validIneligiblePayload);
+
+      expect(mockTwilioMessaging.sendWhatsAppMessage).toHaveBeenCalledTimes(1);
+      const sentMessage = mockTwilioMessaging.sendWhatsAppMessage.mock.calls[0][1];
+      expect(sentMessage).toMatch(/does not qualify|not eligible|ineligible/i);
+    });
+
+    // BL-178/AC-4: Regression — scheme field must still be required when eligible is true
+    it('BL-178/AC-4: scheme must still be required when eligible is true', async () => {
+      // Eligible payloads ALWAYS need a scheme — this validation must NOT be relaxed for them
+      const eligibleWithoutScheme = {
+        journey_id: '423e4567-e89b-12d3-a456-426614174000',
+        user_id: '123e4567-e89b-12d3-a456-426614174001',
+        eligible: true,
+        // scheme is intentionally absent
+        compensation_pence: 2500,
+        delay_minutes: 38,
+        correlation_id: '423e4567-e89b-12d3-a456-426614174099',
+      };
+
+      await expect(handler.handle(eligibleWithoutScheme as any)).rejects.toThrow(/scheme/);
+    });
+
+    // BL-178/AC-3: No-delay message user lookup must still use user_id from payload
+    it('BL-178/AC-3: no-delay event must still look up user phone number by user_id', async () => {
+      const payloadWithoutScheme = {
+        journey_id: '323e4567-e89b-12d3-a456-426614174004',
+        user_id: '123e4567-e89b-12d3-a456-426614174001',
+        eligible: false,
+        compensation_pence: 0,
+        delay_minutes: 0,
+        correlation_id: '323e4567-e89b-12d3-a456-426614174095',
+      };
+
+      await handler.handle(payloadWithoutScheme);
+
+      expect(mockUserRepository.findById).toHaveBeenCalledWith(
+        '123e4567-e89b-12d3-a456-426614174001'
+      );
+    });
+
+    // BL-178/AC-3: Idempotency must also apply to no-delay events
+    it('BL-178/AC-3: no-delay events must be subject to idempotency checks', async () => {
+      mockIdempotencyStore.hasProcessed.mockResolvedValue(true);
+
+      const payloadWithoutScheme = {
+        journey_id: '323e4567-e89b-12d3-a456-426614174005',
+        user_id: '123e4567-e89b-12d3-a456-426614174001',
+        eligible: false,
+        compensation_pence: 0,
+        delay_minutes: 0,
+        correlation_id: '323e4567-e89b-12d3-a456-426614174094',
+      };
+
+      await handler.handle(payloadWithoutScheme);
+
+      // Already processed — no notification should be sent
+      expect(mockTwilioMessaging.sendWhatsAppMessage).not.toHaveBeenCalled();
     });
   });
 });
