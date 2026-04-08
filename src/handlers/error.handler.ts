@@ -26,7 +26,7 @@ export async function errorHandler(ctx: HandlerContext): Promise<HandlerResult> 
   });
 
   return {
-    response: `Sorry, we couldn't find a suitable route for your journey. We've escalated this to our support team who will review your case within 24 hours. In the meantime, type MENU to start a new claim or CHECK to view an existing one.`,
+    response: `Sorry, we couldn't find a suitable route for your journey. We've escalated this to our support team who will review your case within 24 hours. In the meantime, type MENU to start a new claim or DELAY to report another journey.`,
     nextState: FSMState.AUTHENTICATED,
   };
 }

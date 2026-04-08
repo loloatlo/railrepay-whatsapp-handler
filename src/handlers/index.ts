@@ -118,6 +118,7 @@ export async function initializeHandlers(): Promise<void> {
   const { ticketTypeHandler } = await import('./ticket-type.handler.js');
   const { ticketOrManualHandler } = await import('./ticket-or-manual.handler.js');
   const { ocrReviewHandler } = await import('./ocr-review.handler.js');
+  const { claimStatusHandler } = await import('./claim-status.handler.js');
   const { errorHandler } = await import('./error.handler.js');
 
   registerHandler(FSMState.START, startHandler);
@@ -136,5 +137,6 @@ export async function initializeHandlers(): Promise<void> {
   registerHandler(FSMState.AWAITING_TICKET_PRICE, ticketPriceHandler);
   registerHandler(FSMState.AWAITING_TICKET_CLASS, ticketClassHandler);
   registerHandler(FSMState.AWAITING_TICKET_TYPE, ticketTypeHandler);
+  registerHandler(FSMState.AWAITING_CLAIM_STATUS, claimStatusHandler);
   registerHandler(FSMState.ERROR, errorHandler);
 }

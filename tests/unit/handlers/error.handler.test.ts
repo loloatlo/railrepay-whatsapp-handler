@@ -1,14 +1,20 @@
 /**
- * TD-WHATSAPP-054: ERROR Handler Tests - Generic Error Recovery
+ * TD-WHATSAPP-054 / BL-152 AC-4: ERROR Handler Tests - Generic Error Recovery
  *
  * TECHNICAL DEBT CONTEXT:
  * FSMState.ERROR exists in the FSM enum but has NO registered handler.
  * Users who exhaust all routing alternatives (or hit other errors) reach an unhandled state.
  *
  * REQUIRED FIX:
- * - AC-5: Register ERROR handler that sends apology message and transitions to AUTHENTICATED
+ * - AC-5 (TD-WHATSAPP-054): Register ERROR handler that sends apology message and transitions to AUTHENTICATED
  * - Handler must be GENERIC (not routing-specific) for reusability
  * - Handler does NOT publish events (calling handler publishes before transitioning to ERROR)
+ *
+ * BL-152 AC-4 UPDATE:
+ * The ERROR handler recovery message must NOT reference the "CHECK" command.
+ * "CHECK" was previously mentioned as a way to view existing claims, but AWAITING_CLAIM_STATUS
+ * is a dead FSM state with no handler, making "CHECK" a misleading instruction.
+ * The message should instead direct users to MENU or DELAY.
  *
  * Per ADR-014: Tests written FIRST, implementation follows
  * Per Test Lock Rule: Blake MUST NOT modify these tests
@@ -71,13 +77,16 @@ describe('TD-WHATSAPP-054: ERROR Handler (Generic Error Recovery)', () => {
       expect(result.response).toContain('24 hours');
     });
 
-    it('should mention MENU and CHECK commands in response', async () => {
-      // BEHAVIOR: User should know they can start a new claim or check existing
+    it('should mention MENU command but NOT CHECK command in response', async () => {
+      // AC-4 (BL-152): ERROR handler must NOT reference "CHECK" because
+      // AWAITING_CLAIM_STATUS has no handler — directing users to CHECK would cause
+      // a second unhandled-state error.
+      // The message should direct users to MENU or DELAY instead.
 
       const result = await errorHandler(mockContext);
 
       expect(result.response).toContain('MENU');
-      expect(result.response).toContain('CHECK');
+      expect(result.response).not.toContain('CHECK');
     });
 
     it('should transition to AUTHENTICATED state (not stay in ERROR)', async () => {
