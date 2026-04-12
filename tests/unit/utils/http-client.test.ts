@@ -195,6 +195,10 @@ describe('TD-WHATSAPP-041: HTTP Client with Retry and Circuit Breaker', () => {
 
       // Act & Assert
       const resultPromise = client.get('http://test.example.com/api');
+      // Suppress unhandled-rejection warning: the rejection will be handled by
+      // expect(...).rejects below, but Node.js fires the warning during
+      // advanceTimersByTimeAsync before the handler is attached.
+      resultPromise.catch(() => {});
 
       // Advance through all retry delays
       await vi.advanceTimersByTimeAsync(1000); // Retry 1
@@ -215,6 +219,8 @@ describe('TD-WHATSAPP-041: HTTP Client with Retry and Circuit Breaker', () => {
 
       // Act
       const resultPromise = client.get('http://test.example.com/api');
+      // Suppress unhandled-rejection warning (see above for explanation)
+      resultPromise.catch(() => {});
       await vi.advanceTimersByTimeAsync(500); // Single retry delay
 
       await expect(resultPromise).rejects.toThrow('Fail');

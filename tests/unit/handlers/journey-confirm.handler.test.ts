@@ -43,6 +43,24 @@ describe('Journey Confirm Handler', () => {
       updated_at: new Date('2024-11-20T10:00:00Z'),
     };
 
+    // BL-158: allRoutes must contain >= 2 routes so the NO path reaches
+    // AWAITING_ROUTING_ALTERNATIVE rather than the single-route fallback.
+    // matchedRoute is routes[0]; the alternatives are routes[1..n].
+    const sharedRoute0 = {
+      legs: [
+        { from: 'Abergavenny', to: 'Hereford', departure: '08:31', arrival: '09:00', operator: 'TfW' },
+      ],
+      totalDuration: '29m',
+      isDirect: true,
+    };
+    const sharedRoute1 = {
+      legs: [
+        { from: 'Abergavenny', to: 'Hereford', departure: '09:05', arrival: '09:35', operator: 'TfW' },
+      ],
+      totalDuration: '30m',
+      isDirect: true,
+    };
+
     mockContext = {
       phoneNumber: '+447700900123',
       messageBody: 'YES',
@@ -58,13 +76,8 @@ describe('Journey Confirm Handler', () => {
         originName: 'Abergavenny',
         destinationName: 'Hereford',
         departureTime: '08:30',
-        matchedRoute: {
-          legs: [
-            { from: 'Abergavenny', to: 'Hereford', departure: '08:31', arrival: '09:00', operator: 'TfW' },
-          ],
-          totalDuration: '29m',
-          isDirect: true,
-        },
+        matchedRoute: sharedRoute0,
+        allRoutes: [sharedRoute0, sharedRoute1],
         isDirect: true,
       },
     };

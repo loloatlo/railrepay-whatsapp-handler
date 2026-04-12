@@ -12,7 +12,7 @@
  * 5. Invalid input → Send error with hint, stay in AWAITING_TERMS
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { termsHandler } from '../../../src/handlers/terms.handler';
 import { FSMState } from '../../../src/services/fsm.service';
 import type { HandlerContext } from '../../../src/handlers';
@@ -166,6 +166,36 @@ describe('Terms Handler', () => {
       // Assert
       expect(result.response).toContain('understand');
       expect(result.nextState).toBeUndefined();
+    });
+  });
+
+  describe('TERMS_URL environment variable (BL-21)', () => {
+    afterEach(() => {
+      delete process.env.TERMS_URL;
+    });
+
+    it('should use TERMS_URL env var when set', async () => {
+      // Arrange
+      process.env.TERMS_URL = 'https://staging.railrepay.co.uk/terms';
+      mockContext.messageBody = 'TERMS';
+
+      // Act
+      const result = await termsHandler(mockContext);
+
+      // Assert: URL in response reflects the env var
+      expect(result.response).toContain('staging.railrepay.co.uk');
+    });
+
+    it('should fall back to default URL when TERMS_URL not set', async () => {
+      // Arrange: ensure env var is not set
+      delete process.env.TERMS_URL;
+      mockContext.messageBody = 'TERMS';
+
+      // Act
+      const result = await termsHandler(mockContext);
+
+      // Assert: default URL used
+      expect(result.response).toContain('railrepay.co.uk/terms');
     });
   });
 

@@ -14,7 +14,9 @@
 import type { HandlerContext, HandlerResult } from './index.js';
 import { FSMState } from '../services/fsm.service.js';
 
-const TERMS_URL = 'https://railrepay.co.uk/terms';
+function getTermsUrl(): string {
+  return process.env.TERMS_URL || 'https://railrepay.co.uk/terms';
+}
 
 /**
  * Handle AWAITING_TERMS state
@@ -43,7 +45,7 @@ Please reply with the 6-digit code to verify your number.
     return {
       response: `You can read our full terms and conditions here:
 
-${TERMS_URL}
+${getTermsUrl()}
 
 Once you've read them, reply YES to accept and continue, or NO to opt out.`,
       nextState: FSMState.AWAITING_TERMS,

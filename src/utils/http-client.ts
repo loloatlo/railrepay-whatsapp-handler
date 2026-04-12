@@ -129,73 +129,92 @@ export function createHttpClient(config?: Partial<HttpClientConfig>) {
   }
 
   /**
-   * Execute HTTP request with retry and circuit breaker
+   * Perform a single HTTP call and return the response data.
+   * Returns a Promise that never rejects — on failure it returns the error as a resolved value
+   * so that callers can chain `.then` without triggering unhandled-rejection warnings.
    */
-  async function executeRequest<T>(
+  function attemptRequest<T>(
+    method: 'get' | 'post',
+    url: string,
+    data: any,
+    axiosConfig: AxiosRequestConfig
+  ): Promise<{ ok: true; data: T } | { ok: false; error: any }> {
+    const call =
+      method === 'get'
+        ? axios.get<T>(url, axiosConfig)
+        : axios.post<T>(url, data, axiosConfig);
+
+    return call
+      .then((response) => ({ ok: true as const, data: response.data }))
+      .catch((error) => ({ ok: false as const, error }));
+  }
+
+  /**
+   * Execute HTTP request with retry and circuit breaker.
+   * Uses recursive tail-call style to keep all rejections within a single
+   * promise chain, avoiding spurious UnhandledPromiseRejection warnings
+   * when fake timers advance mid-retry in tests.
+   */
+  function executeRequest<T>(
     method: 'get' | 'post',
     url: string,
     data?: any,
-    options?: AxiosRequestConfig
+    options?: AxiosRequestConfig,
+    attempt: number = 1
   ): Promise<T> {
     // Check circuit breaker before attempting request
-    checkCircuitBreaker();
-
-    let lastError: any;
-
-    // Attempt request with retries
-    for (let attempt = 1; attempt <= finalConfig.retries + 1; attempt++) {
-      try {
-        const axiosConfig: AxiosRequestConfig = {
-          ...options,
-          timeout: finalConfig.timeout,
-          headers: {
-            ...options?.headers,
-          },
-        };
-
-        let response;
-        if (method === 'get') {
-          response = await axios.get(url, axiosConfig);
-        } else {
-          response = await axios.post(url, data, axiosConfig);
-        }
-
-        // Success - record and return
-        recordSuccess();
-        return response.data;
-      } catch (error: any) {
-        lastError = error;
-
-        // Check if we should retry this error
-        if (!shouldRetry(error)) {
-          // Don't retry 4xx errors - fail immediately
-          recordFailure();
-          throw error;
-        }
-
-        // If this is the last attempt, fail
-        if (attempt > finalConfig.retries) {
-          recordFailure();
-          throw error;
-        }
-
-        // Log retry attempt
-        logger.warn('Retrying', {
-          attempt: attempt + 1,
-          url,
-          error: error.message,
-          delayMs: finalConfig.retryDelay * Math.pow(2, attempt - 1),
-        });
-
-        // Exponential backoff: delay * 2^(attempt-1)
-        const delay = finalConfig.retryDelay * Math.pow(2, attempt - 1);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
+    try {
+      checkCircuitBreaker();
+    } catch (cbError) {
+      return Promise.reject(cbError);
     }
 
-    // All retries exhausted
-    recordFailure();
-    throw lastError;
+    const axiosConfig: AxiosRequestConfig = {
+      ...options,
+      timeout: finalConfig.timeout,
+      headers: {
+        ...options?.headers,
+      },
+    };
+
+    return attemptRequest<T>(method, url, data, axiosConfig).then((result) => {
+      if (result.ok) {
+        recordSuccess();
+        return result.data;
+      }
+
+      const error = result.error;
+
+      // Don't retry 4xx client errors
+      if (!shouldRetry(error)) {
+        recordFailure();
+        return Promise.reject(error);
+      }
+
+      // Last attempt exhausted
+      if (attempt > finalConfig.retries) {
+        recordFailure();
+        return Promise.reject(error);
+      }
+
+      // Log retry attempt
+      logger.warn('Retrying', {
+        attempt: attempt + 1,
+        url,
+        error: error.message,
+        delayMs: finalConfig.retryDelay * Math.pow(2, attempt - 1),
+      });
+
+      // Exponential backoff: delay * 2^(attempt-1)
+      const delay = finalConfig.retryDelay * Math.pow(2, attempt - 1);
+      return new Promise<T>((resolve, reject) => {
+        setTimeout(() => {
+          executeRequest<T>(method, url, data, options, attempt + 1)
+            .then(resolve)
+            .catch(reject);
+        }, delay);
+      });
+    });
   }
 
   return {

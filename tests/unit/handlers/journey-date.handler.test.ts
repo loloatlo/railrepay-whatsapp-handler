@@ -11,17 +11,29 @@
  * 4. Invalid date → Send ERROR_INVALID_INPUT with hint
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { journeyDateHandler } from '../../../src/handlers/journey-date.handler';
 import { FSMState } from '../../../src/services/fsm.service';
 import type { HandlerContext } from '../../../src/handlers';
 import type { User } from '../../../src/db/types';
+
+// BL-159: Freeze time to 2026-01-20 so that relative and absolute dates are deterministic.
+// "yesterday"     = 2026-01-19  (valid: 1 day ago)
+// "today"         = 2026-01-20  (valid: 0 days ago)
+// "tomorrow"      = 2026-01-21  (future — rejected)
+// "15 Nov"        = 15 Nov 2025 (valid: ~66 days ago, within 90-day window)
+// "15/11/2025"    = 15 Nov 2025 (valid: ~66 days ago, within 90-day window)
+// "2024-01-01"    = 1 Jan 2024  (valid parse but ~385 days ago — rejected as >90 days)
+const FROZEN_NOW = new Date('2026-01-20T12:00:00Z');
 
 describe('Journey Date Handler', () => {
   let mockContext: HandlerContext;
   let mockUser: User;
 
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FROZEN_NOW);
+
     mockUser = {
       id: 'user-123',
       phone_number: '+447700900123',
@@ -38,6 +50,10 @@ describe('Journey Date Handler', () => {
       currentState: FSMState.AWAITING_JOURNEY_DATE,
       correlationId: 'test-corr-id',
     };
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe('Valid dates', () => {
