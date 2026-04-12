@@ -14,7 +14,7 @@
  * - ADR-002: Log errors with correlation IDs for distributed tracing
  */
 
-import type { Request, Response, NextFunction, ErrorRequestHandler } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { getLogger } from '../lib/logger.js';
 
 const logger = getLogger();
@@ -28,6 +28,23 @@ export interface AppError extends Error {
 }
 
 /**
+ * Request with optional correlation ID attached by middleware
+ */
+interface RequestWithCorrelationId extends Request {
+  correlationId?: string;
+}
+
+/**
+ * Structured error response body
+ */
+interface ErrorResponseBody {
+  error: string;
+  message: string;
+  correlationId: string;
+  stack?: string;
+}
+
+/**
  * Determines if the request is for a webhook endpoint
  */
 function isWebhookRoute(req: Request): boolean {
@@ -37,12 +54,12 @@ function isWebhookRoute(req: Request): boolean {
 /**
  * Sanitizes error message to avoid leaking internal details
  */
-function sanitizeErrorMessage(error: any, isDevelopment: boolean): string {
+function sanitizeErrorMessage(error: unknown, isDevelopment: boolean): string {
   if (!error) {
     return 'An unknown error occurred';
   }
 
-  const originalMessage = error.message || 'An unknown error occurred';
+  const originalMessage = (error instanceof Error ? error.message : String(error)) || 'An unknown error occurred';
 
   // In production, sanitize messages that might leak internal details
   if (!isDevelopment) {
@@ -82,18 +99,21 @@ function formatTwiMLError(_message: string): string {
  *
  * @returns Express error handler middleware
  */
-export function errorHandler(): ErrorRequestHandler {
+export function errorHandler(): (err: unknown, req: Request, res: Response, _next: NextFunction) => void {
   return (
-    err: any,
+    err: unknown,
     req: Request,
     res: Response,
     _next: NextFunction
   ): void => {
     // Extract correlation ID from request
-    const correlationId = (req as any).correlationId || 'unknown';
+    const correlationId = (req as RequestWithCorrelationId).correlationId || 'unknown';
+
+    // Narrow error to access optional properties safely
+    const errObj = err instanceof Error ? err as AppError : null;
 
     // Determine status code
-    const statusCode = err?.statusCode || 500;
+    const statusCode = errObj?.statusCode || 500;
 
     // Determine if we're in development
     const isDevelopment = process.env.NODE_ENV === 'development';
@@ -102,11 +122,11 @@ export function errorHandler(): ErrorRequestHandler {
     logger.error('Request error', {
       component: 'whatsapp-handler/error-handler',
       correlationId,
-      message: err?.message || 'Unknown error',
+      message: errObj?.message || 'Unknown error',
       statusCode,
       path: req.path,
       method: req.method,
-      stack: err?.stack,
+      stack: errObj?.stack,
     });
 
     // Set status code
@@ -124,15 +144,15 @@ export function errorHandler(): ErrorRequestHandler {
     // Handle API routes with JSON
     const sanitizedMessage = sanitizeErrorMessage(err, isDevelopment);
 
-    const errorResponse: any = {
-      error: err?.name || 'Error',
+    const errorResponse: ErrorResponseBody = {
+      error: errObj?.name || 'Error',
       message: sanitizedMessage,
       correlationId,
     };
 
     // Include stack trace only in development
-    if (isDevelopment && err?.stack) {
-      errorResponse.stack = err.stack;
+    if (isDevelopment && errObj?.stack) {
+      errorResponse.stack = errObj.stack;
     }
 
     res.json(errorResponse);
