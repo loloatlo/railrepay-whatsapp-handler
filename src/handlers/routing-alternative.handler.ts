@@ -19,7 +19,7 @@
 
 import type { HandlerContext, HandlerResult } from './index.js';
 import { FSMState } from '../services/fsm.service.js';
-import { createLogger } from '@railrepay/winston-logger';
+import { createLogger, type Logger } from '@railrepay/winston-logger';
 import { buildAlternativesResponse } from '../utils/buildAlternativesResponse.js';
 import axios from 'axios';
 
@@ -154,7 +154,7 @@ We'll be in touch within 24 hours.`,
  */
 async function fetchAndDisplayAlternatives(
   ctx: HandlerContext,
-  logger: any,
+  logger: Logger,
   alternativeCount: number,
   isFirstEntry: boolean = false
 ): Promise<HandlerResult> {

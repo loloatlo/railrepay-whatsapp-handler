@@ -22,7 +22,7 @@
  * AC-9:  no usable fields → AWAITING_JOURNEY_DATE with friendly fallback
  */
 
-import { createLogger } from '@railrepay/winston-logger';
+import { createLogger, type Logger } from '@railrepay/winston-logger';
 import type { HandlerContext, HandlerResult } from './index.js';
 import { FSMState } from '../services/fsm.service.js';
 import { searchStations } from '../services/station.service.js';
@@ -59,7 +59,7 @@ function buildOcrSummary(stateData: Record<string, any>): string {
  */
 async function resolveCrsCodes(
   stateData: Record<string, any>,
-  logger: any,
+  logger: Logger,
   correlationId: string
 ): Promise<Record<string, any>> {
   const enriched = { ...stateData };
@@ -129,7 +129,7 @@ async function resolveCrsCodes(
  */
 async function callRoutesMatcher(
   stateData: Record<string, any>,
-  logger: any,
+  logger: Logger,
   correlationId: string,
   journeyMatcherUrl: string
 ): Promise<HandlerResult> {
@@ -256,7 +256,7 @@ Is this the journey you took? Reply YES to confirm or NO to see alternatives.`,
  */
 async function adaptiveRoute(
   stateData: Record<string, any>,
-  logger: any,
+  logger: Logger,
   correlationId: string
 ): Promise<HandlerResult> {
   // AC-8: If station names present but CRS codes missing, attempt lookup first
