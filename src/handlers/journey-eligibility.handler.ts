@@ -75,12 +75,8 @@ export async function journeyEligibilityHandler(ctx: HandlerContext): Promise<Ha
 
   // AC-7 (TD-BL29): Use dynamic current date — NOT a hardcoded string
   const today = new Date().toISOString().slice(0, 10);
-  // Legacy mock routing: if mockDelayTrackerResponse is injected via context
-  // (original journey-eligibility.handler.test.ts — Test Lock Rule), treat as future
-  // journey regardless of date to preserve backward compatibility with locked tests.
-  const hasMockDelayTracker = ctxAny.mockDelayTrackerResponse !== undefined;
-  const isHistoric = !hasMockDelayTracker && travelDate < today;
-  const isFuture = hasMockDelayTracker || travelDate > today;
+  const isHistoric = travelDate < today;
+  const isFuture = travelDate > today;
 
   // AC-4: Historic journey - immediate eligibility check
   if (isHistoric) {
@@ -296,61 +292,21 @@ Your journey has been saved.`,
     }
   }
 
-  // AC-5: Future journey - register with delay-tracker
+  // AC-5: Future journey - confirm saved (delay-tracker notified via Kafka 'journey.confirmed' chain per ADR-019)
   if (isFuture) {
-    // Read mock response from test context or call real service
-    const mockDelayTrackerResponse = ctxAny.mockDelayTrackerResponse;
-
-    // Handle delay-tracker unavailable
-    if (mockDelayTrackerResponse?.serviceUnavailable) {
-      logger.error('Delay tracker unavailable', {
-        correlationId: ctx.correlationId,
-        journeyId,
-      });
-
-      return {
-        response: `Your journey has been saved.
-
-We'll start tracking it shortly and notify you if there's a delay.`,
-        nextState: FSMState.AUTHENTICATED,
-        stateData: {
-          trackingPending: true,
-        },
-      };
-    }
-
-    // Get tracking result from mock or real service call
-    const trackingId = mockDelayTrackerResponse?.trackingId ?? 'tracking-789';
-
-    logger.info('Future journey registered for tracking', {
+    logger.info('Future journey saved, delay-tracker will be notified via Kafka event chain', {
       correlationId: ctx.correlationId,
       journeyId,
-      trackingId,
     });
 
     return {
       response: `Perfect! Your journey has been saved and will be tracked.
 
 Journey: ${origin} → ${destination}
-Date: 21 Nov (tomorrow)
+Date: ${travelDate}
 
 We'll monitor your train and notify you if there's a delay. If you're eligible for compensation, we'll let you know immediately.`,
       nextState: FSMState.AUTHENTICATED,
-      publishEvents: [
-        {
-          id: '',
-          aggregate_id: journeyId,
-          aggregate_type: 'journey',
-          event_type: 'journey.tracking_registered',
-          payload: {
-            journeyId,
-            userId: ctx.user?.id,
-            trackingId,
-          },
-          published_at: null,
-          created_at: new Date(),
-        },
-      ],
     };
   }
 

@@ -270,7 +270,20 @@ describe('US-XXX: Submitting a Journey to RailRepay', () => {
     });
   });
 
-  describe('AC-5: Future Journey Tracking Confirmation', () => {
+  describe('AC-5: Future Journey Confirmation (No External Service Calls)', () => {
+    /**
+     * TD-WHATSAPP-031 (BL-27) CONTEXT:
+     * The old implementation incorrectly called delay-tracker via REST and published
+     * 'journey.tracking_registered' events from journeyEligibilityHandler.
+     * Per ADR-019, delay-tracker receives journeys via the 'journey.confirmed' Kafka
+     * event chain — NOT via REST calls from whatsapp-handler. This block tests that
+     * the dead code path has been removed entirely.
+     *
+     * AC-1: journeyEligibilityHandler does NOT reference mockDelayTrackerResponse
+     * AC-2: journeyEligibilityHandler does NOT publish 'journey.tracking_registered' events
+     * AC-3: journeyEligibilityHandler does NOT contain hasMockDelayTracker conditional branching
+     */
+
     let mockContext: HandlerContext;
     let mockUser: User;
 
@@ -284,20 +297,23 @@ describe('US-XXX: Submitting a Journey to RailRepay', () => {
       };
 
       /**
-       * CONTEXT: User has submitted journey details for a FUTURE journey
-       * System needs to register journey with delay-tracker for monitoring
+       * CONTEXT: User has submitted journey details for a FUTURE journey.
+       * After TD-WHATSAPP-031 cleanup, this handler should:
+       * - Confirm the journey is saved
+       * - NOT call delay-tracker
+       * - NOT publish 'journey.tracking_registered'
+       * delay-tracker receives journeys via 'journey.confirmed' Kafka event chain (ADR-019).
        */
       mockContext = {
         phoneNumber: '+447700900123',
-        messageBody: 'SKIP', // User skipped ticket upload (will upload later)
+        messageBody: 'SKIP',
         messageSid: 'SM123',
         user: mockUser,
         currentState: FSMState.AWAITING_TICKET_UPLOAD,
         correlationId: 'test-corr-id',
         stateData: {
-          // Default future journey data
           journeyId: 'journey-future-890',
-          travelDate: '2024-11-21', // Tomorrow (future)
+          travelDate: '2099-06-01', // Unambiguously future — no mock routing needed
           origin: 'PAD',
           destination: 'CDF',
           departureTime: '10:00',
@@ -306,130 +322,132 @@ describe('US-XXX: Submitting a Journey to RailRepay', () => {
     });
 
     describe('When journey is future (not yet happened)', () => {
-      it('should register journey with delay-tracker for monitoring', async () => {
+      // AC-2: No 'journey.tracking_registered' event published
+      it('should NOT publish journey.tracking_registered event for future journeys', async () => {
         /**
-         * BEHAVIOR: User submits future journey (tomorrow)
-         * System calls delay-tracker POST /journeys/track
-         * delay-tracker begins monitoring darwin-ingestor for delay data
-         * System confirms to user that journey is being tracked
+         * AC-2: journeyEligibilityHandler does not publish 'journey.tracking_registered' events.
+         * REGRESSION GUARD: This test will FAIL if Blake leaves the dead code path in place.
+         * The dead code published this event via a REST call to delay-tracker.
+         * Per ADR-019, delay-tracker is notified via the 'journey.confirmed' Kafka chain,
+         * not by whatsapp-handler directly.
          */
-        // Arrange: Future journey with tracking success response
-        const futureTrackingContext = {
+        // Arrange: Future journey — no mockDelayTrackerResponse injected
+        const futureJourneyContext = {
           ...mockContext,
-          messageBody: 'SKIP',
           stateData: {
-            journeyId: 'journey-future-890',
-            travelDate: '2024-11-21', // Tomorrow (future)
+            journeyId: 'journey-future-no-event-001',
+            travelDate: '2099-06-01',
             origin: 'PAD',
             destination: 'CDF',
             departureTime: '10:00',
           },
-          mockDelayTrackerResponse: {
-            registered: true,
-            trackingId: 'track-abc123',
-          },
+          // AC-1: No mockDelayTrackerResponse key present in context
         };
 
-        // Act: User completes journey submission
-        const result = await journeyEligibilityHandler(futureTrackingContext);
+        // Act
+        const result = await journeyEligibilityHandler(futureJourneyContext);
 
-        // Assert: Confirmation message sent
-        expect(result.response).toContain('saved');
-        expect(result.response).toContain('track');
-        expect(result.response).toContain('monitor');
+        // Assert: No tracking_registered event published
+        const trackingEvents = (result.publishEvents ?? []).filter(
+          (e: any) => e.event_type === 'journey.tracking_registered'
+        );
+        expect(trackingEvents).toHaveLength(0); // AC-2
 
-        // Assert: Transitions to authenticated state (user can submit more journeys)
+        // Assert: Handler completes without error
         expect(result.nextState).toBe(FSMState.AUTHENTICATED);
-
-        // Assert: Outbox event published for delay-tracker registration
-        expect(result.publishEvents).toBeDefined();
-        expect(result.publishEvents?.length).toBeGreaterThan(0);
-        expect(result.publishEvents?.[0].event_type).toBe('journey.tracking_registered');
       });
 
-      it('should inform user they will be notified when delay is detected', async () => {
-        // Arrange: Future journey context
+      // AC-1, AC-3: No mockDelayTrackerResponse / hasMockDelayTracker branching
+      it('should return a saved confirmation without reading mockDelayTrackerResponse from context', async () => {
+        /**
+         * AC-1 & AC-3: After cleanup, the handler must not inspect ctx.mockDelayTrackerResponse
+         * or branch on hasMockDelayTracker. Injecting the key into context must have
+         * no observable effect on the response.
+         *
+         * REGRESSION GUARD: Old implementation used hasMockDelayTracker to override the
+         * isHistoric/isFuture decision. That conditional must be gone.
+         */
+        // Arrange: Future journey with an unrecognised extra key that the handler must ignore
+        const futureJourneyWithSpuriousKey = {
+          ...mockContext,
+          stateData: {
+            journeyId: 'journey-future-spurious-002',
+            travelDate: '2099-07-15',
+            origin: 'BHM',
+            destination: 'MAN',
+            departureTime: '09:00',
+          },
+          // Deliberately present to verify it is NOT read by the cleaned-up handler:
+          mockDelayTrackerResponse: { registered: true, trackingId: 'should-be-ignored' },
+        };
+
+        // Act
+        const result = await journeyEligibilityHandler(futureJourneyWithSpuriousKey);
+
+        // Assert: Response acknowledges the journey is saved (same as without the spurious key)
+        expect(result.response).toContain('saved');
+        expect(result.nextState).toBe(FSMState.AUTHENTICATED);
+
+        // Assert: No tracking_registered event (mockDelayTrackerResponse was not acted upon)
+        const trackingEvents = (result.publishEvents ?? []).filter(
+          (e: any) => e.event_type === 'journey.tracking_registered'
+        );
+        expect(trackingEvents).toHaveLength(0); // AC-1, AC-3
+      });
+
+      it('should confirm journey saved and inform user they will be notified', async () => {
+        /**
+         * AC-5 (original): User receives confirmation that the journey is saved
+         * and will be monitored. Notification behaviour is now delivered via the
+         * Kafka → delay-tracker chain (ADR-019), not from this handler.
+         */
+        // Arrange: Future journey on a clearly future date
         const futureNotificationContext = {
           ...mockContext,
           stateData: {
-            journeyId: 'journey-future-notify-555',
-            travelDate: '2024-11-22', // Day after tomorrow
+            journeyId: 'journey-future-notify-003',
+            travelDate: '2099-08-20',
             origin: 'BHM',
             destination: 'MAN',
             departureTime: '15:30',
           },
-          mockDelayTrackerResponse: {
-            registered: true,
-            trackingId: 'track-notify-555',
-          },
+          // No mockDelayTrackerResponse — AC-1
         };
 
         // Act
         const result = await journeyEligibilityHandler(futureNotificationContext);
 
-        // Assert: Message explains proactive notification
-        expect(result.response).toContain('notify');
-        expect(result.response).toContain('delay');
-        expect(result.response).toMatch(/let you know|message you|inform you/i);
+        // Assert: Message confirms journey saved
+        expect(result.response).toContain('saved');
+
+        // Assert: Transitions to AUTHENTICATED
+        expect(result.nextState).toBe(FSMState.AUTHENTICATED);
       });
 
-      it('should include journey details in confirmation message', async () => {
-        // Arrange: Future journey with specific details
+      it('should include journey origin and destination in future confirmation message', async () => {
+        /**
+         * AC-5: The confirmation message should reference the journey details.
+         */
+        // Arrange
         const detailsContext = {
           ...mockContext,
           stateData: {
-            journeyId: 'journey-details-777',
-            travelDate: '2024-11-21', // Tomorrow
+            journeyId: 'journey-future-details-004',
+            travelDate: '2099-09-10',
             origin: 'PAD',
             destination: 'CDF',
             departureTime: '10:00',
           },
-          mockDelayTrackerResponse: {
-            registered: true,
-            trackingId: 'track-777',
-          },
+          // No mockDelayTrackerResponse — AC-1
         };
 
         // Act
         const result = await journeyEligibilityHandler(detailsContext);
 
-        // Assert: Confirmation includes journey summary
+        // Assert: Confirmation references journey endpoints
         expect(result.response).toContain('PAD');
         expect(result.response).toContain('CDF');
-        expect(result.response).toMatch(/21.*Nov|tomorrow/i); // Date mentioned
-      });
-
-      it('should handle delay-tracker service unavailable gracefully', async () => {
-        /**
-         * BEHAVIOR: If delay-tracker is down, journey is still saved in
-         * journey-matcher but tracking registration is retried later
-         */
-        // Arrange: Mock delay-tracker timeout
-        const trackerUnavailableContext = {
-          ...mockContext,
-          stateData: {
-            journeyId: 'journey-tracker-down-999',
-            travelDate: '2024-11-21',
-            origin: 'PAD',
-            destination: 'CDF',
-            departureTime: '10:00',
-          },
-          mockDelayTrackerResponse: {
-            serviceUnavailable: true,
-          },
-        };
-
-        // Act
-        const result = await journeyEligibilityHandler(trackerUnavailableContext);
-
-        // Assert: User informed journey is saved
-        expect(result.response).toContain('saved');
-
-        // Assert: Warning about tracking delay (optional)
-        // System should retry tracking registration asynchronously
-
-        // Assert: Journey persisted with tracking_pending flag
-        expect(result.stateData?.trackingPending).toBe(true);
+        expect(result.nextState).toBe(FSMState.AUTHENTICATED);
       });
     });
   });

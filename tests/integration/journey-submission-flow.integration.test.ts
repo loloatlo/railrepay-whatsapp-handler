@@ -454,13 +454,22 @@ describe('Journey Submission Flow - Integration Tests', () => {
     });
   });
 
-  describe('AC-5: Future Journey Tracking Registration', () => {
+  describe('AC-5: Future Journey Confirmation (No External Service Calls)', () => {
     /**
      * AC-5: If my journey is future, receive a message confirming that my journey
-     *       has been saved and will be tracked
+     *       has been saved and will be tracked.
+     *
+     * TD-WHATSAPP-031 (BL-27) REGRESSION GUARD:
+     * The old implementation called delay-tracker via REST and wrote
+     * 'journey.tracking_registered' outbox events directly from this handler.
+     * Per ADR-019, delay-tracker receives journeys via the 'journey.confirmed'
+     * Kafka event chain — NOT via REST calls. The dead code has been removed.
+     *
+     * AC-2: No 'journey.tracking_registered' event must appear in the outbox
+     *       after journeyEligibilityHandler processes a future journey.
      */
 
-    it('should register journey with delay-tracker for future journeys', async () => {
+    it('should NOT write journey.tracking_registered outbox event for future journeys', async () => {
       // Arrange: Create test user
       const userResult = await pool.query(
         `INSERT INTO whatsapp_handler.users (phone_number, verified_at)
@@ -470,56 +479,47 @@ describe('Journey Submission Flow - Integration Tests', () => {
       );
       const user: User = userResult.rows[0];
 
-      // Mock delay-tracker registration response
-      const mockDelayTracker = vi.fn().mockResolvedValue({
-        trackingId: 'tracking-456',
-        message: 'Journey registered for monitoring',
-      });
-
-      // Act: User completes journey submission (future date: tomorrow)
+      // Set FSM state as if user has submitted a future journey
       await fsmService.setState(user.phone_number, FSMState.AWAITING_TICKET_UPLOAD, {
         journeyId: 'journey-future-789',
-        journeyDate: 'tomorrow',
+        travelDate: '2099-06-01', // Unambiguously future
         origin: 'PAD',
         destination: 'CDF',
-        isFuture: true,
+        departureTime: '10:00',
       });
 
-      // Simulate handler calling delay-tracker POST /journeys/track
-      const trackingResult = await mockDelayTracker({
-        journeyId: 'journey-future-789',
-        userId: user.id,
-        journeyDate: 'tomorrow',
-      });
+      // Act: Invoke the handler directly (no mockDelayTrackerResponse injected — AC-1)
+      const handlerContext = {
+        phoneNumber: user.phone_number,
+        messageBody: 'SKIP',
+        messageSid: 'SM-INTEG-001',
+        user,
+        currentState: FSMState.AWAITING_TICKET_UPLOAD,
+        correlationId: 'integ-test-corr-001',
+        stateData: {
+          journeyId: 'journey-future-789',
+          travelDate: '2099-06-01',
+          origin: 'PAD',
+          destination: 'CDF',
+          departureTime: '10:00',
+        },
+        // No mockDelayTrackerResponse key — AC-1: must not be referenced by handler
+      };
+      const result = await journeyEligibilityHandler(handlerContext);
 
-      // Assert: delay-tracker called
-      expect(mockDelayTracker).toHaveBeenCalled();
+      // Assert: Handler returned successfully and transitioned state
+      expect(result.nextState).toBe(FSMState.AUTHENTICATED);
 
-      // Assert: Outbox event published for tracking registration
-      await pool.query(
-        `INSERT INTO whatsapp_handler.outbox_events
-         (aggregate_id, aggregate_type, event_type, payload)
-         VALUES ($1, 'journey', 'journey.tracking_registered', $2)`,
-        [
-          'journey-future-789',
-          JSON.stringify({
-            trackingId: trackingResult.trackingId,
-            journeyId: 'journey-future-789',
-            userId: user.id,
-          }),
-        ]
-      );
-
-      const outboxEvents = await pool.query(
+      // Assert (AC-2 REGRESSION GUARD): No 'journey.tracking_registered' event in outbox.
+      // The dead code wrote this event; its absence confirms the path is removed.
+      const trackingEvents = await pool.query(
         `SELECT * FROM whatsapp_handler.outbox_events
          WHERE event_type = 'journey.tracking_registered'`
       );
-      expect(outboxEvents.rows).toHaveLength(1);
-      expect(outboxEvents.rows[0].payload.trackingId).toBe('tracking-456');
+      expect(trackingEvents.rows).toHaveLength(0); // AC-2
 
-      // Assert: User informed journey is being tracked
-      const finalState = await fsmService.getState(user.phone_number);
-      expect(finalState.state).toBe(FSMState.AUTHENTICATED);
+      // Assert: User informed journey is saved
+      expect(result.response).toContain('saved');
     });
   });
 
