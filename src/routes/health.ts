@@ -1,7 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import type { Pool } from 'pg';
 import type { Redis } from 'ioredis';
-import { getConfig } from '../config/index.js';
 
 /**
  * Health check status types
@@ -27,7 +26,6 @@ interface HealthCheckResponse {
   checks: {
     database: CheckResult;
     redis: CheckResult;
-    timetable_loader: CheckResult;
   };
 }
 
@@ -52,7 +50,6 @@ export function createHealthRouter(dbPool: Pool, redis: Redis): Router {
     const checks: HealthCheckResponse['checks'] = {
       database: { status: 'healthy' },
       redis: { status: 'healthy' },
-      timetable_loader: { status: 'healthy' },
     };
 
     let overallStatus: HealthStatus = 'healthy';
@@ -79,35 +76,6 @@ export function createHealthRouter(dbPool: Pool, redis: Redis): Router {
       checks.redis.status = 'unhealthy';
       checks.redis.error = error instanceof Error ? error.message : 'Unknown error';
       overallStatus = 'unhealthy';
-    }
-
-    // Check timetable-loader service (optional - don't fail if down)
-    try {
-      const startTimetable = Date.now();
-      const config = getConfig();
-      const timetableUrl = config.externalServices.timetableLoaderUrl || 'http://localhost:3001';
-      const response = await fetch(`${timetableUrl}/health`, {
-        signal: AbortSignal.timeout(1000), // 1 second timeout
-      });
-
-      if (response.ok) {
-        checks.timetable_loader.latency_ms = Date.now() - startTimetable;
-        checks.timetable_loader.status = 'healthy';
-      } else {
-        checks.timetable_loader.status = 'unhealthy';
-        checks.timetable_loader.error = `HTTP ${response.status}`;
-        // Only degrade, don't fail completely
-        if (overallStatus === 'healthy') {
-          overallStatus = 'degraded';
-        }
-      }
-    } catch (error) {
-      checks.timetable_loader.status = 'unhealthy';
-      checks.timetable_loader.error = error instanceof Error ? error.message : 'Unknown error';
-      // Only degrade, don't fail completely
-      if (overallStatus === 'healthy') {
-        overallStatus = 'degraded';
-      }
     }
 
     const response: HealthCheckResponse = {
